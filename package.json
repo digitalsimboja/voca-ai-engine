@@ -1,0 +1,47 @@
+{
+  "name": "voca-ai-engine",
+  "version": "1.0.0",
+  "description": "Voca AI Engine - Agent Routing & Provisioning System",
+  "main": "index.js",
+  "scripts": {
+    "start": "node services/elizaos/manager.js",
+    "dev": "nodemon services/elizaos/manager.js",
+    "test": "jest",
+    "build": "echo 'Build completed'",
+    "elizaos:install": "npm install -g @elizaos/cli",
+    "elizaos:login": "elizaos login",
+    "elizaos:create": "elizaos create",
+    "elizaos:start": "elizaos start"
+  },
+  "dependencies": {
+    "@elizaos/cli": "latest",
+    "@elizaos/core": "latest",
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4",
+    "express-rate-limit": "^7.1.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3"
+  },
+  "keywords": [
+    "voca-ai",
+    "elizaos",
+    "agent",
+    "ai",
+    "chatbot",
+    "automation"
+  ],
+  "author": "Voca AI Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}
