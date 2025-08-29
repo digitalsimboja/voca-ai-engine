@@ -1,0 +1,117 @@
+version: "3.8"
+
+services:
+  # Voca AI Engine - Main FastAPI application
+  voca-ai-engine:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: voca-ai-engine
+    ports:
+      - "8008:8008"
+    environment:
+      - DATABASE_URL=postgresql://voca_user:voca_password@postgres:5432/voca_ai_db
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - ELIZAOS_API_KEY=${ELIZAOS_API_KEY}
+      - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
+      - INSTAGRAM_API_KEY=${INSTAGRAM_API_KEY}
+      - TWITTER_API_KEY=${TWITTER_API_KEY}
+      - FACEBOOK_API_KEY=${FACEBOOK_API_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENVIRONMENT=development
+    volumes:
+      - ./app:/app/app
+      - ./logs:/app/logs
+      - elizaos_data:/app/elizaos
+    depends_on:
+      - postgres
+    networks:
+      - voca-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: voca-postgres
+    environment:
+      - POSTGRES_DB=voca_ai_db
+      - POSTGRES_USER=voca_user
+      - POSTGRES_PASSWORD=voca_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - voca-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voca_user -d voca_ai_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ElizaOS Agent Manager Service
+  elizaos-manager:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.elizaos
+    container_name: voca-elizaos-manager
+    environment:
+      - ELIZAOS_API_KEY=${ELIZAOS_API_KEY}
+      - ELIZAOS_WORKSPACE=/app/elizaos
+      - DATABASE_URL=postgresql://voca_user:voca_password@postgres:5432/voca_ai_db
+    volumes:
+      - elizaos_data:/app/elizaos
+      - ./elizaos-config:/app/config
+    depends_on:
+      - postgres
+    networks:
+      - voca-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # AWS Connect Webhook Handler
+  connect-webhook:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.webhook
+    container_name: voca-connect-webhook
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - VOCA_AI_ENGINE_URL=http://voca-ai-engine:8000
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+    ports:
+      - "8001:8001"
+    depends_on:
+      - voca-ai-engine
+    networks:
+      - voca-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  elizaos_data:
+    driver: local
+
+networks:
+  voca-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
