@@ -1,7 +1,5 @@
-"""
-API Routes module
-"""
+"""API routes for Voca AI Engine."""
 
-from . import agent_routes, provisioning_routes, webhook_routes
+from . import health, agent_provisioning, service_status
 
-__all__ = ["agent_routes", "provisioning_routes", "webhook_routes"]
+__all__ = ["health", "agent_provisioning", "service_status"]

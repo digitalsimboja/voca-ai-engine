@@ -17,21 +17,22 @@ The Voca AI Engine is the core backend system that handles agent routing, provis
 ## System Architecture Overview
 
 ```
-Voca AI Frontend → API Gateway → Core Engine → AWS Services + ElizaOS Agents
-                                    ↓
-                            Agent Router & Provisioner
-                                    ↓
-                    ┌─────────────────────────────────────┐
-                    │  AWS Connect  │  ElizaOS Agents    │
-                    │  - Voice      │  - WhatsApp        │
-                    │  - SMS        │  - Instagram       │
-                    │  - Chat       │  - Twitter         │
-                    │               │  - Facebook        │
-                    └─────────────────────────────────────┘
+Voca AI Frontend → vocaai-backend → voca-ai-engine → AWS Services + ElizaOS Agents
+                        ↓                    ↓
+                Vendor Management    Agent Router & Provisioner
+                        ↓                    ↓
+                ┌─────────────────────────────────────┐
+                │  AWS Connect  │  ElizaOS Agents    │
+                │  - Voice      │  - WhatsApp        │
+                │  - SMS        │  - Instagram       │
+                │  - Chat       │  - Twitter         │
+                │               │  - Facebook        │
+                └─────────────────────────────────────┘
 ```
 
 ### Key Components:
-- **Agent Router Engine**: Central orchestration system
+- **vocaai-backend**: Vendor management and API gateway
+- **voca-ai-engine**: Agent Router Engine - Central orchestration system
 - **AWS Connect Provisioner**: Automated Amazon Connect instance management
 - **ElizaOS Agent Manager**: Social media agent creation and management
 - **Context Manager**: Cross-channel context sharing and persistence
@@ -39,16 +40,19 @@ Voca AI Frontend → API Gateway → Core Engine → AWS Services + ElizaOS Agen
 ## Agent Provisioning Flow
 
 ### Overview
-When a vendor creates an agent on the Voca AI platform, the system automatically provisions:
-1. **AWS Connect Instance** - For voice and SMS communications
-2. **ElizaOS Agent** - For all social media platforms (Instagram, WhatsApp, Facebook, Twitter)
-3. **Shared Context** - Cross-channel conversation history and business context
+When a vendor creates an agent on the Voca AI platform:
+1. **vocaai-backend** receives the request and manages vendor data
+2. **vocaai-backend** calls **voca-ai-engine** to provision the agent
+3. **voca-ai-engine** automatically provisions:
+   - **AWS Connect Instance** - For voice and SMS communications
+   - **ElizaOS Agent** - For all social media platforms (Instagram, WhatsApp, Facebook, Twitter)
+   - **Shared Context** - Cross-channel conversation history and business context
 
 ### Step-by-Step Process
 
 #### 1. Vendor Submits Agent Creation Request
 
-**Frontend → Backend API Call:**
+**Frontend → vocaai-backend API Call:**
 ```json
 POST /api/v1/agents
 {
@@ -75,9 +79,41 @@ POST /api/v1/agents
 }
 ```
 
-#### 2. Backend API Processing
+#### 2. vocaai-backend → voca-ai-engine Provisioning Request
 
-**`agent_routes.py` → `AgentOrchestrator.create_multi_channel_agent()`**
+**vocaai-backend processes the request and calls the engine:**
+```json
+POST http://voca-ai-engine:8008/api/v1/agents/provision
+{
+  "vendor_id": "vendor_ccb_123",
+  "agent_config": {
+    "name": "Cozy Comfort Bedding Agent",
+    "description": "AI agent for Cozy Comfort Bedding store",
+    "business_type": "retail",
+    "channels": ["instagram", "whatsapp", "facebook", "twitter", "voice"],
+    "character_config": {
+      "business_name": "Cozy Comfort Bedding",
+      "products": ["bedding_sets", "pillows", "comforters", "duvets"],
+      "specialties": ["bedding", "home_decor", "sleep_products"],
+      "tone": "friendly_helpful",
+      "knowledge_base": {
+        "product_catalog": "bedding_products.json",
+        "return_policy": "30-day returns",
+        "shipping_info": "Free shipping over $50"
+      }
+    },
+    "context": {
+      "store_hours": "9 AM - 6 PM EST",
+      "contact_info": "+1-555-BEDDING",
+      "website": "cozycomfort.com"
+    }
+  }
+}
+```
+
+#### 3. voca-ai-engine Processing
+
+**`provisioning_routes.py` → `AgentOrchestrator.create_multi_channel_agent()`**
 
 ```python
 # 1. Generate unique agent ID
@@ -94,7 +130,7 @@ agent = {
 }
 ```
 
-#### 3. Channel-Specific Provisioning
+#### 4. Channel-Specific Provisioning
 
 **For each channel, the orchestrator calls `_setup_channel()`:**
 
@@ -219,7 +255,7 @@ for channel in ["instagram", "whatsapp", "facebook", "twitter"]:
    }
    ```
 
-#### 4. Context Management Setup
+#### 5. Context Management Setup
 
 ```python
 # Initialize agent context
@@ -237,9 +273,53 @@ context = {
 }
 ```
 
-#### 5. Final Agent Configuration
+#### 6. Final Agent Configuration
 
-**Response to Vendor:**
+**voca-ai-engine → vocaai-backend Response:**
+```json
+{
+  "provisioning_id": "prov_ccb_12345",
+  "status": "completed",
+  "agent_id": "voca-agent-ccb-12345",
+  "agent_config": {
+    "id": "voca-agent-ccb-12345",
+    "name": "Cozy Comfort Bedding Agent",
+    "status": "active",
+    "channels": [
+      {
+        "channel_type": "voice",
+        "status": "active",
+        "phone_number": "+1-555-BEDDING",
+        "aws_connect_instance_id": "arn:aws:connect:us-east-1:123456789012:instance/abc123"
+      },
+      {
+        "channel_type": "instagram",
+        "status": "active",
+        "elizaos_agent_id": "elizaos-cozy-comfort-bedding-instagram",
+        "webhook_url": "https://api.voca-ai.com/webhooks/elizaos"
+      },
+      {
+        "channel_type": "whatsapp",
+        "status": "active",
+        "elizaos_agent_id": "elizaos-cozy-comfort-bedding-whatsapp"
+      },
+      {
+        "channel_type": "facebook",
+        "status": "active",
+        "elizaos_agent_id": "elizaos-cozy-comfort-bedding-facebook"
+      },
+      {
+        "channel_type": "twitter",
+        "status": "active",
+        "elizaos_agent_id": "elizaos-cozy-comfort-bedding-twitter"
+      }
+    ],
+    "provisioning_complete": true
+  }
+}
+```
+
+**vocaai-backend → Vendor Response:**
 ```json
 {
   "id": "voca-agent-ccb-12345",
@@ -287,6 +367,11 @@ context = {
 - Platform: Instagram (primary)
 - Products: Bedding sets, pillows, comforters
 - Customer Service: Voice calls + Social media support
+
+**Architecture Flow:**
+- **Frontend** → **vocaai-backend** (vendor management)
+- **vocaai-backend** → **voca-ai-engine** (agent provisioning)
+- **voca-ai-engine** → **AWS Connect + ElizaOS** (service provisioning)
 
 ### 🔄 Real-Time Message Flow
 
@@ -436,9 +521,32 @@ voca-ai-engine/
 
 ## API Documentation
 
+### Agent Provisioning Endpoints
+
+#### Provision Agent (Internal - Called by vocaai-backend)
+```http
+POST /api/v1/agents/provision
+Content-Type: application/json
+
+{
+  "vendor_id": "vendor_123",
+  "agent_config": {
+    "name": "Agent Name",
+    "description": "Agent description",
+    "business_type": "retail|microfinance|other",
+    "channels": ["instagram", "whatsapp", "facebook", "twitter", "voice"],
+    "character_config": {
+      "business_name": "Business Name",
+      "products": ["product1", "product2"],
+      "tone": "friendly_helpful|professional_friendly"
+    }
+  }
+}
+```
+
 ### Agent Management Endpoints
 
-#### Create Agent
+#### Create Agent (Internal - Called by vocaai-backend)
 ```http
 POST /api/v1/agents
 Content-Type: application/json
