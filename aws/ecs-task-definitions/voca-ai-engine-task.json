@@ -1,0 +1,72 @@
+{
+  "family": "voca-ai-engine",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/voca-ai-engine-task-role",
+  "containerDefinitions": [
+    {
+      "name": "voca-ai-engine",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/voca-ai-engine:latest",
+      "portMappings": [
+        {
+          "containerPort": 8008,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "DATABASE_URL",
+          "value": "postgresql://voca_user:voca_password@voca-rds-cluster.cluster-xyz.REGION.rds.amazonaws.com:5432/voca_ai_db"
+        },
+        {
+          "name": "AWS_DEFAULT_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "production"
+        },
+        {
+          "name": "VOCA_OS_URL",
+          "value": "http://voca-os-service:3001"
+        },
+        {
+          "name": "VOCA_CONNECT_URL",
+          "value": "http://voca-connect-service:8001"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:voca-aws-credentials:access_key_id::"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:voca-aws-credentials:secret_access_key::"
+        },
+        {
+          "name": "JWT_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:voca-jwt-secret:secret::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/voca-ai-engine",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8008/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

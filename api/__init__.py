@@ -1,13 +1,7 @@
-"""
-API module for Voca AI Engine
-"""
+"""API modules for Voca AI Engine."""
 
-from .routes import agent_routes, provisioning_routes, webhook_routes
-from .models import AgentCreate, AgentUpdate, AgentResponse, AgentList
-from .middleware import get_current_user
+from .routes import health, agent_provisioning, service_status
 
 __all__ = [
-    "agent_routes", "provisioning_routes", "webhook_routes",
-    "AgentCreate", "AgentUpdate", "AgentResponse", "AgentList",
-    "get_current_user"
+    "health", "agent_provisioning", "service_status"
 ]

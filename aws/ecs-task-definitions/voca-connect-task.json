@@ -1,0 +1,72 @@
+{
+  "family": "voca-connect",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/voca-connect-task-role",
+  "containerDefinitions": [
+    {
+      "name": "voca-connect",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/voca-connect:latest",
+      "portMappings": [
+        {
+          "containerPort": 8001,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "DATABASE_URL",
+          "value": "postgresql://voca_user:voca_password@voca-rds-cluster.cluster-xyz.REGION.rds.amazonaws.com:5432/voca_ai_db"
+        },
+        {
+          "name": "AWS_DEFAULT_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "CONNECT_INSTANCE_ALIAS_PREFIX",
+          "value": "voca-connect"
+        },
+        {
+          "name": "LAMBDA_FUNCTION_PREFIX",
+          "value": "voca-lambda"
+        },
+        {
+          "name": "VOCA_AI_ENGINE_URL",
+          "value": "http://voca-ai-engine-service:8008"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:voca-aws-credentials:access_key_id::"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:voca-aws-credentials:secret_access_key::"
+        },
+        {
+          "name": "WEBHOOK_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:voca-webhook-secret:secret::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/voca-connect",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}
