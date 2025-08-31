@@ -1,52 +1,49 @@
-# Voca OS - Agent Service
+# Use Node.js 18 Alpine as base image
 FROM node:18-alpine
-
-# Install system dependencies
-RUN apk add --no-cache \
-    curl \
-    git \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/cache/apk/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
+# Install pnpm globally
+RUN npm install -g pnpm
 
-# Install Node.js dependencies
-RUN npm ci --only=production
+# Copy package.json files first for better caching
+COPY services/voca-os/package.json ./package.json
+COPY services/voca-os/agent/package.json ./agent/package.json
+COPY services/voca-os/packages/core/package.json ./packages/core/package.json
+COPY services/voca-os/packages/client-direct/package.json ./packages/client-direct/package.json
+COPY services/voca-os/packages/plugin-bootstrap/package.json ./packages/plugin-bootstrap/package.json
 
-# Create directories
-RUN mkdir -p /app/characters /app/config
+# Copy pnpm workspace configuration
+COPY services/voca-os/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY services/voca-os/pnpm-lock.yaml ./pnpm-lock.yaml
 
-# Copy configuration
-COPY ../../config/voca-os/ ./config/
-COPY ../../characters/ ./characters/
+# Install dependencies
+RUN pnpm install --frozen-lockfile
 
-# Copy service code
-COPY . ./
+# Copy ElizaOS source code
+COPY services/voca-os/agent ./agent
+COPY services/voca-os/packages ./packages
+COPY services/voca-os/characters ./characters
+COPY services/voca-os/scripts ./scripts
+
+# Copy Voca OS service
+COPY services/voca-os/voca-os-service.js ./voca-os-service.js
+
+# Build ElizaOS packages
+RUN pnpm --filter "@elizaos/core" build
+RUN pnpm --filter "@elizaos/client-direct" build
+RUN pnpm --filter "@elizaos/plugin-bootstrap" build
+
+# Create characters directory if it doesn't exist
+RUN mkdir -p characters
+
+# Expose port
+EXPOSE 3001
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S voca -u 1001
-
-# Change ownership
-RUN chown -R voca:nodejs /app
-USER voca
-
-# Expose port
-EXPOSE 3001
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:3001/health || exit 1
-
-# Start Voca OS service
-CMD ["node", "index.js"]
+# Start the Voca OS service
+CMD ["node", "voca-os-service.js"]

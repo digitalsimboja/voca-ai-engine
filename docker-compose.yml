@@ -90,7 +90,7 @@ services:
   voca-os:
     build:
       context: ./services/voca-os
-      dockerfile: ../../docker/Dockerfile.voca-os
+      dockerfile: Dockerfile
     container_name: voca-ai-engine-voca-os
     env_file:
       - .env
@@ -120,8 +120,7 @@ services:
     ports:
       - "5001:3001"
     volumes:
-      - ./config/voca-os:/app/config
-      - ./characters:/app/characters
+      - ./services/voca-os/characters:/app/characters
       - /app/node_modules
     depends_on:
       postgres:
