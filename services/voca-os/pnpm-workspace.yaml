@@ -1,5 +1,0 @@
-packages:
-  - 'agent'
-  - 'packages/core'
-  - 'packages/client-direct'
-  - 'packages/plugin-bootstrap'

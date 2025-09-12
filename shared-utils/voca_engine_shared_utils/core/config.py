@@ -42,8 +42,9 @@ class Settings(BaseSettings):
     s3_character_bucket: str = "voca-ai-character-store"
     
     # Service URLs
-    voca_os_url: str = "http://voca-os:3001"
-    voca_connect_url: str = "http://voca-connect:8001"
+    voca_os_url: str = "http://localhost:5001"
+    voca_connect_url: str = "http://localhost:5002"
+    vocaai_backend_url: str = "http://localhost:8012"
     
     # AWS Connect settings
     webhook_secret: str

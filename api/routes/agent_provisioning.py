@@ -5,10 +5,11 @@ This module handles agent creation, configuration, and provisioning requests.
 """
 
 from datetime import datetime
+import httpx
 from typing import Dict, Any, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from voca_engine_shared_utils.core.config import get_settings
@@ -22,7 +23,6 @@ settings = get_settings()
 
 class AgentProvisioningRequest(BaseModel):
     """Agent provisioning request model - matches VocaAIAgentClient format."""
-    agent_id: Optional[str] = Field(None, description="Agent ID (None for new agents)")
     name: str = Field(..., description="Name of the agent")
     description: str = Field(..., description="Description of the agent")
     business_type: str = Field(..., description="Type of business (retail, microfinance, etc.)")
@@ -30,7 +30,6 @@ class AgentProvisioningRequest(BaseModel):
     languages: list[str] = Field(..., description="Supported languages")
     configuration: Dict[str, Any] = Field(..., description="Agent configuration data")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
-    
     class Config:
         schema_extra = {
             "example": {
@@ -76,13 +75,12 @@ class AgentProvisioningResponse(BaseModel):
 
 @router.post("/provision", response_model=AgentProvisioningResponse)
 async def provision_agent(
-    request: AgentProvisioningRequest,
-    background_tasks: BackgroundTasks
+    request: AgentProvisioningRequest
 ) -> AgentProvisioningResponse:
     """
-    Provision a new agent - matches VocaAIAgentClient expectations.
+    Provision a new agent.
     
-    This endpoint initiates the agent provisioning process by:
+    This endpoint directly provisions the agent by:
     1. Creating agent record in database
     2. Provisioning AWS Connect resources (if voice/SMS channels requested)
     3. Creating ElizaOS agent configuration (if social media channels requested)
@@ -90,26 +88,14 @@ async def provision_agent(
     """
     try:
         logger.info("Starting agent provisioning", agent_name=request.name)
-        logger.info("Request details", 
-                   agent_name=request.name,
-                   business_type=request.business_type,
-                   channels=request.channels,
-                   languages=request.languages)
-        
-        # Generate unique agent ID
-        agent_id = str(uuid4())
-        
-        # TODO: Implement actual provisioning logic
-        # TODO: Call the voca-connect service to provision the aws connect instance for voice and sms channels
-        # TODO: Call the voca-os service to provision the elizaos agent for social media channels
-        # For now, return a mock response
-        
-        # Start background provisioning task
-        background_tasks.add_task(
-            _provision_agent_background,
-            agent_id,
+
+        provisioning_results = await _provision_agent(
             request.dict()
         )
+        # Extract agent_id from VocaOS response
+        agent_id = None
+        if provisioning_results.get("voca_os", {}).get("status") == "success":
+            agent_id = provisioning_results["voca_os"].get("agent_id")
         
         return AgentProvisioningResponse(
             status="success",
@@ -122,10 +108,8 @@ async def provision_agent(
                 "channels": request.channels,
                 "languages": request.languages,
                 "status": "active",
-                "provisioning_status": {
-                    "voca_os": "pending" if any(ch in ["whatsapp", "instagram_dm", "facebook_messenger"] for ch in request.channels) else "not_required",
-                    "voca_connect": "pending" if any(ch in ["voice", "sms"] for ch in request.channels) else "not_required"
-                }
+                "provisioning_status": provisioning_results,
+                "note": "Agent provisioned directly with VocaOS agent ID"
             },
             timestamp=datetime.utcnow().isoformat()
         )
@@ -336,23 +320,188 @@ async def list_vendor_agents(vendor_id: str) -> Dict[str, Any]:
         )
 
 
-async def _provision_agent_background(
-    agent_id: str,
+async def _provision_agent(
     request_data: Dict[str, Any]
-):
-    """Background task for agent provisioning."""
+) -> Dict[str, Any]:
+    """ElizaOS agent wrapper."""
+    
+    settings = get_settings()
+    
     try:
-        logger.info("Background provisioning started", agent_id=agent_id)
+        logger.info("Agent provisioning started...")
         
-        # TODO: Implement actual provisioning logic:
-        # 1. Call Voca AI Engine service to provision the agent
-        # 2. Call Voca OS service if social media channels requested
-        # 3. Call Voca Connect service if voice/SMS channels requested
-        # 4. Update provisioning status
+        # Extract request details
+        channels = request_data.get('channels', [])
+        configuration = request_data.get('configuration', {})
         
-        logger.info("Background provisioning completed", agent_id=agent_id)
+        # Check if social media channels are requested
+        social_media_channels = ["whatsapp", "instagram_dm", "facebook_messenger", "twitter_dm"]
+        has_social_media = any(channel in social_media_channels for channel in channels)
         
+        # Check if voice/SMS channels are requested
+        voice_channels = ["voice", "sms"]
+        has_voice = any(channel in voice_channels for channel in channels)
+        
+        provisioning_results = {}
+        
+        # Provision VocaOS agent for social media channels
+        if has_social_media:
+            try:
+                logger.info("Provisioning VocaOS agent for social media channels", channels=channels)
+                
+                # Prepare agent configuration for voca-os
+                agent_config = {
+                    "profile": {
+                        "name": request_data.get('name', 'AI Assistant'),
+                        "description": request_data.get('description', 'AI assistant for customer service'),
+                        "role": "customer_service_agent"
+                    },
+                    "customerService": configuration.get('customer_service', {
+                        "responseTime": 5,
+                        "autoResponses": True,
+                        "hours": "24/7",
+                        "languages": request_data.get('languages', ['English'])
+                    }),
+                    "aiCapabilities": configuration.get('ai_capabilities', {
+                        "customerInquiries": True,
+                        "orderTracking": True,
+                        "productRecommendations": True
+                    }),
+                    "socialMedia": {
+                        "platforms": {}
+                    }
+                }
+                
+                # Create vendor identifier for webhook URLs
+                vendor_identifier = request_data.get('vendor_id')
+                if not vendor_identifier:
+                    # Generate a temporary vendor ID if not provided
+                    vendor_identifier = f"vendor-{request_data.get('name', 'agent').lower().replace(' ', '-')}"
+        
+                # Add platform-specific configurations
+                for channel in channels:
+                    if channel in social_media_channels:
+                        agent_config["socialMedia"]["platforms"][channel] = {
+                            "enabled": True,
+                            "webhook_url": f"{settings.voca_os_url}/webhooks/{channel}/{vendor_identifier}"
+                        }
+                        
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{settings.voca_os_url}/voca-os/api/v1/vendors",
+                        json={
+                            "vendor_id": vendor_identifier,
+                            "agent_config": agent_config
+                        },
+                        timeout=30.0
+                    )
+                    
+                    if response.status_code == 200:
+                        voca_os_response = response.json()
+                        agent_id = voca_os_response['vendor']['agent_id']
+                        
+                        provisioning_results["voca_os"] = {
+                            "status": "success",
+                            "agent_id": agent_id,
+                            "message": "VocaOS agent provisioned successfully",
+                            "data": voca_os_response,
+                            "vendor_id": vendor_identifier,
+                            "note": "VocaOS generated its own agentId internally"
+                        }
+                        logger.info("VocaOS agent provisioned successfully", 
+                                   vocaos_agent_id=agent_id, 
+                                   vendor_id=vendor_identifier,
+                                   vocaos_response=voca_os_response)
+                        # TODO: Re-enable when vocaai-backend is running
+                        # await _notify(agent_id, agent_id)
+                    else:
+                        provisioning_results["voca_os"] = {
+                            "status": "failed",
+                            "message": f"Failed to provision VocaOS agent: {response.text}",
+                            "error_code": response.status_code
+                        }
+                        logger.error("Failed to provision VocaOS agent", 
+                                   status_code=response.status_code,
+                                   response=response.text)
+            except Exception as e:
+                provisioning_results["voca_os"] = {
+                    "status": "failed",
+                    "message": f"Error provisioning VocaOS agent: {str(e)}"
+                }
+                logger.error("Error provisioning VocaOS agent", 
+                           error=str(e))
+        # Provision AWS Connect for voice/SMS channels
+        if has_voice:
+            try:
+                logger.info("Provisioning AWS Connect for voice/SMS channels", channels=channels)
+                
+                # TODO: Implement AWS Connect provisioning
+                # This would call the voca-connect service
+                provisioning_results["voca_connect"] = {
+                    "status": "pending",
+                    "message": "AWS Connect provisioning not yet implemented"
+                }
+                
+            except Exception as e:
+                provisioning_results["voca_connect"] = {
+                    "status": "failed",
+                    "message": f"Error provisioning AWS Connect: {str(e)}"
+                }
+                logger.error("Error provisioning AWS Connect", 
+                           error=str(e))
+        
+        # Log final provisioning results
+        logger.info("Direct provisioning completed", 
+                   results=provisioning_results)
+        
+        return provisioning_results
         
     except Exception as e:
-        logger.log_error(e, context={"agent_id": agent_id, "action": "background_provisioning"})
-        # TODO: Update provisioning status to failed
+        logger.log_error(e, context={"action": "direct_provisioning"})
+        # Return error status for failed provisioning
+        return {
+            "voca_os": {"status": "failed", "message": f"Provisioning failed: {str(e)}"},
+            "voca_connect": {"status": "failed", "message": f"Provisioning failed: {str(e)}"}
+        }
+
+
+async def _notify(agent_id: str, vocaos_agent_id: str):
+    """
+    Notify the vocaai-backend about the VocaOS-generated agent_id.
+    This allows the backend to update its database with the actual VocaOS agent_id.
+    """
+    try:
+        settings = get_settings()
+        
+        # Get the vocaai-backend URL from settings
+        backend_url = getattr(settings, 'vocaai_backend_url', 'http://localhost:8012')
+        
+        logger.info("Notifying vocaai-backend about VocaOS agent_id", 
+                   agent_id=agent_id, 
+                   vocaos_agent_id=vocaos_agent_id)
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{backend_url}/v1/agent/agents/{agent_id}/webhook",
+                json={
+                    "agent_id": vocaos_agent_id,
+                },
+                timeout=30.0
+            )
+            
+            if response.json().get('status') == 'success':
+                logger.info("Successfully notified vocaai-backend about VocaOS agent_id",
+                           agent_id=agent_id,
+                           vocaos_agent_id=vocaos_agent_id)
+            else:
+                logger.error("Failed to notify vocaai-backend about VocaOS agent_id",
+                           agent_id=agent_id,
+                           vocaos_agent_id=vocaos_agent_id,
+                           status_code=response.status_code,
+                           response=response.text)
+                
+    except Exception as e:
+        logger.error("Error notifying vocaai-backend about VocaOS agent_id",
+                   agent_id=agent_id,
+                   vocaos_agent_id=vocaos_agent_id,
+                   error=str(e))

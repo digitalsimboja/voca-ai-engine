@@ -54,11 +54,15 @@ show_usage() {
     echo "  -h, --help          Show this help message"
     echo "  -s, --status        Show status before stopping"
     echo "  -c, --clean         Stop and remove all containers and volumes"
+    echo "  -v, --volumes       Remove all Docker volumes (system-wide)"
+    echo "  -p, --project-volumes  Remove only project-specific volumes"
     echo ""
     echo "Examples:"
-    echo "  $0                  # Stop all services"
+    echo "  $0                  # Stop all services and remove all volumes"
     echo "  $0 --status         # Show status then stop"
-    echo "  $0 --clean          # Stop and remove everything"
+    echo "  $0 --clean          # Stop and remove all containers and volumes"
+    echo "  $0 --volumes        # Remove all Docker volumes (system-wide)"
+    echo "  $0 --project-volumes # Remove only project volumes"
 }
 
 # Function to show status
@@ -71,9 +75,24 @@ show_status() {
 # Function to stop all services
 stop_all_services() {
     print_header "Stopping all Voca AI services..."
-    docker stop $(docker ps -q) && docker rm $(docker ps -aq)
-    # docker compose down
-    print_status "All services stopped"
+    
+    # Stop and remove project-specific containers and volumes
+    docker compose down -v --remove-orphans
+    
+    # Stop all remaining containers
+    docker stop $(docker ps -q) 2>/dev/null || true
+    
+    # Remove all containers
+    docker rm $(docker ps -aq) 2>/dev/null || true
+    
+    # Remove all volumes (aggressive cleanup)
+    print_info "Removing all Docker volumes..."
+    docker volume ls -q | xargs -r docker volume rm 2>/dev/null || true
+    
+    # Clean up any remaining volumes
+    docker volume prune -f
+    
+    print_status "All services stopped and volumes removed"
 }
 
 # Function to clean up
@@ -83,11 +102,72 @@ clean_up() {
     read -p "Are you sure? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker compose down -v
+        # Stop and remove all containers, networks, and volumes
+        docker compose down -v --remove-orphans
+        
+        # Remove any remaining containers
+        docker stop $(docker ps -aq) 2>/dev/null || true
+        docker rm $(docker ps -aq) 2>/dev/null || true
+        
+        # Remove all volumes (including named and anonymous)
+        docker volume prune -f
+        
+        # Remove any dangling volumes
+        docker volume ls -q -f dangling=true | xargs -r docker volume rm 2>/dev/null || true
+        
         print_status "All containers, networks, and volumes removed"
     else
         print_info "Cleanup cancelled"
     fi
+}
+
+# Function to remove only volumes
+remove_volumes() {
+    print_header "Removing all Docker volumes..."
+    print_warning "This will remove ALL Docker volumes on your system!"
+    read -p "Are you sure? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Stop all running containers first
+        print_info "Stopping all running containers..."
+        docker stop $(docker ps -q) 2>/dev/null || true
+        
+        # Remove all containers
+        print_info "Removing all containers..."
+        docker rm $(docker ps -aq) 2>/dev/null || true
+        
+        # Remove all volumes (this is the most aggressive approach)
+        print_info "Removing all Docker volumes..."
+        docker volume ls -q | xargs -r docker volume rm 2>/dev/null || true
+        
+        # Also run volume prune to catch any remaining
+        docker volume prune -f
+        
+        # Remove any dangling volumes
+        docker volume ls -q -f dangling=true | xargs -r docker volume rm 2>/dev/null || true
+        
+        print_status "All volumes removed"
+    else
+        print_info "Volume removal cancelled"
+    fi
+}
+
+# Function to remove only project volumes
+remove_project_volumes() {
+    print_header "Removing Voca AI project volumes only..."
+    
+    # Get the project name from docker-compose
+    PROJECT_NAME=$(basename $(pwd))
+    
+    print_info "Removing volumes for project: $PROJECT_NAME"
+    
+    # Remove volumes with project prefix
+    docker volume ls -q | grep "^${PROJECT_NAME}_" | xargs -r docker volume rm 2>/dev/null || true
+    
+    # Also remove any volumes that might be named differently
+    docker volume ls -q | grep "voca-ai-engine" | xargs -r docker volume rm 2>/dev/null || true
+    
+    print_status "Project volumes removed"
 }
 
 # Main script logic
@@ -112,6 +192,12 @@ main() {
             ;;
         -c|--clean)
             clean_up
+            ;;
+        -v|--volumes)
+            remove_volumes
+            ;;
+        -p|--project-volumes)
+            remove_project_volumes
             ;;
         *)
             print_error "Unknown option: $1"

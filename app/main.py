@@ -19,7 +19,7 @@ import uvicorn
 from voca_engine_shared_utils.core.config import get_settings
 from voca_engine_shared_utils.core.logger import get_logger
 # Import only the routes we've created
-from api.routes import health, agent_provisioning, service_status
+from api.routes import health, agent_provisioning, service_status, message_routing, webhooks
 
 URL_PREFIX = "/voca-engine/api/v1"
 
@@ -51,6 +51,8 @@ app.add_middleware(
 app.include_router(health.router, prefix=f"{URL_PREFIX}/health", tags=["Health"])
 app.include_router(agent_provisioning.router, prefix=f"{URL_PREFIX}/agent", tags=["Agent Provisioning"])
 app.include_router(service_status.router, prefix=f"{URL_PREFIX}/status", tags=["Service Status"])
+app.include_router(message_routing.router, prefix=f"{URL_PREFIX}/messages", tags=["Message Routing"])
+app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 
 @app.on_event("startup")
 async def startup_event():
@@ -83,7 +85,9 @@ async def root():
             "health": f"{URL_PREFIX}/health",
             "docs": "/docs",
             "agent_provisioning": f"{URL_PREFIX}/agent",
-            "service_status": f"{URL_PREFIX}/status"
+            "service_status": f"{URL_PREFIX}/status",
+            "message_routing": f"{URL_PREFIX}/messages",
+            "webhooks": "/webhooks"
         }
     }
 
