@@ -21,6 +21,8 @@ from voca_engine_shared_utils.core.logger import get_logger
 # Import only the routes we've created
 from api.routes import health, agent_provisioning, service_status
 
+URL_PREFIX = "/voca-engine/api/v1"
+
 # Setup logging
 logger = get_logger("voca-ai-engine")
 
@@ -46,9 +48,9 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(health.router, prefix="/health", tags=["Health"])
-app.include_router(agent_provisioning.router, prefix="/v1/agent", tags=["Agent Provisioning"])
-app.include_router(service_status.router, prefix="/v1/status", tags=["Service Status"])
+app.include_router(health.router, prefix=f"{URL_PREFIX}/health", tags=["Health"])
+app.include_router(agent_provisioning.router, prefix=f"{URL_PREFIX}/agent", tags=["Agent Provisioning"])
+app.include_router(service_status.router, prefix=f"{URL_PREFIX}/status", tags=["Service Status"])
 
 @app.on_event("startup")
 async def startup_event():
@@ -78,10 +80,10 @@ async def root():
         "timestamp": datetime.utcnow().isoformat(),
         "environment": settings.app_env,
         "endpoints": {
-            "health": "/health",
+            "health": f"{URL_PREFIX}/health",
             "docs": "/docs",
-            "agent_provisioning": "/v1/agent",
-            "service_status": "/v1/status"
+            "agent_provisioning": f"{URL_PREFIX}/agent",
+            "service_status": f"{URL_PREFIX}/status"
         }
     }
 

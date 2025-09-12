@@ -22,8 +22,8 @@ NC='\033[0m' # No Color
 
 # Service configurations with descriptions
 declare -A SERVICES=(
-    ["engine"]="Voca AI Engine - Main FastAPI application - Port 5008"
-    ["voca-os"]="Voca OS - Node.js Agent Service - Port 5001"
+    ["engine"]="Voca AI Engine - Main FastAPI application - Port 5008 (auto-starts Voca OS in dev mode)"
+    ["voca-os"]="Voca OS - Node.js Agent Service - Port 5001 (auto-started by engine in dev mode)"
     ["voca-connect"]="Voca Connect - FastAPI AWS Connect Service - Port 5002"
 )
 
@@ -137,16 +137,16 @@ start_service() {
     local service=$1
     local service_name=""
     
-    # Map service names to container names
+    # Map service names to Docker Compose service names
     case $service in
         "engine")
             service_name="voca-ai-engine"
             ;;
         "voca-os")
-            service_name="voca-ai-engine-voca-os"
+            service_name="voca-os"
             ;;
         "voca-connect")
-            service_name="voca-ai-engine-voca-connect"
+            service_name="voca-connect"
             ;;
         *)
             print_error "Unknown service: $service"
@@ -168,8 +168,41 @@ start_service() {
         start_database
     fi
     
-    # Start the service
-    docker compose --profile $service up -d
+    # Special handling for engine - auto-start voca-os in development
+    if [[ $service == "engine" ]]; then
+        print_info "Starting engine with auto-start of Voca OS service..."
+        docker compose --profile engine --profile voca-os up -d
+        
+        # Wait for services to be ready
+        print_info "Waiting for services to be ready..."
+        sleep 10
+        
+        # Check engine status
+        local port="5008"
+        if docker compose ps $service_name | grep -q "Up"; then
+            if curl -f "http://localhost:$port/health" > /dev/null 2>&1; then
+                print_status "${SERVICES[$service]} is running at http://localhost:$port"
+                print_info "Health check: http://localhost:$port/health"
+                print_info "API docs: http://localhost:$port/docs"
+                
+                # Check Voca OS status
+                if docker compose ps voca-os | grep -q "Up"; then
+                    if curl -f "http://localhost:5001/voca-os/api/v1/health" > /dev/null 2>&1; then
+                        print_status "Voca OS service is running at http://localhost:5001"
+                        print_info "Voca OS health: http://localhost:5001/voca-os/api/v1/health"
+                    else
+                        print_warning "Voca OS service is starting (http://localhost:5001)"
+                    fi
+                else
+                    print_warning "Voca OS service may still be starting"
+                fi
+                return 0
+            fi
+        fi
+    else
+        # Start the service normally
+        docker compose --profile $service up -d
+    fi
     
     # Wait for service to be healthy
     print_info "Waiting for service to be ready..."
@@ -192,7 +225,18 @@ start_service() {
             esac
             
             # Check health endpoint
-            local health_url="http://localhost:$port/health"
+            local health_url=""
+            case $service in
+                "engine")
+                    health_url="http://localhost:$port/voca-engine/api/v1/health"
+                    ;;
+                "voca-os")
+                    health_url="http://localhost:$port/voca-os/api/v1/health"
+                    ;;
+                "voca-connect")
+                    health_url="http://localhost:$port/health"
+                    ;;
+            esac
             
             if curl -f "$health_url" > /dev/null 2>&1; then
                 print_status "${SERVICES[$service]} is running at http://localhost:$port"
@@ -241,20 +285,33 @@ start_all_services() {
                 port="5008"
                 ;;
             "voca-os")
-                service_name="voca-ai-engine-voca-os"
+                service_name="voca-os"
                 port="5001"
                 ;;
             "voca-connect")
-                service_name="voca-ai-engine-voca-connect"
+                service_name="voca-connect"
                 port="5002"
                 ;;
         esac
         
         if docker compose ps $service_name | grep -q "Up"; then
             # Check health endpoint
-            if curl -f "http://localhost:$port/health" > /dev/null 2>&1; then
+            local health_url=""
+            case $service in
+                "engine")
+                    health_url="http://localhost:$port/voca-engine/api/v1/health"
+                    ;;
+                "voca-os")
+                    health_url="http://localhost:$port/voca-os/api/v1/health"
+                    ;;
+                "voca-connect")
+                    health_url="http://localhost:$port/health"
+                    ;;
+            esac
+            
+            if curl -f "$health_url" > /dev/null 2>&1; then
                 print_status "${SERVICES[$service]} - http://localhost:$port"
-                print_info "  Health: http://localhost:$port/health"
+                print_info "  Health: $health_url"
                 if [[ $service == "engine" ]]; then
                     print_info "  API docs: http://localhost:$port/docs"
                 fi
@@ -292,20 +349,33 @@ show_status() {
                 port="5008"
                 ;;
             "voca-os")
-                service_name="voca-ai-engine-voca-os"
+                service_name="voca-os"
                 port="5001"
                 ;;
             "voca-connect")
-                service_name="voca-ai-engine-voca-connect"
+                service_name="voca-connect"
                 port="5002"
                 ;;
         esac
         
         if docker compose ps $service_name | grep -q "Up"; then
             # Check health endpoint
-            if curl -f "http://localhost:$port/health" > /dev/null 2>&1; then
+            local health_url=""
+            case $service in
+                "engine")
+                    health_url="http://localhost:$port/voca-engine/api/v1/health"
+                    ;;
+                "voca-os")
+                    health_url="http://localhost:$port/voca-os/api/v1/health"
+                    ;;
+                "voca-connect")
+                    health_url="http://localhost:$port/health"
+                    ;;
+            esac
+            
+            if curl -f "$health_url" > /dev/null 2>&1; then
                 print_status "${SERVICES[$service]} - Running (http://localhost:$port)"
-                print_info "  Health: http://localhost:$port/health"
+                print_info "  Health: $health_url"
                 if [[ $service == "engine" ]]; then
                     print_info "  API docs: http://localhost:$port/docs"
                 fi

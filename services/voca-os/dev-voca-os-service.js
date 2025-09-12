@@ -5,8 +5,9 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-const VOCA_AI_ENGINE_URL = process.env.VOCA_AI_ENGINE_URL || 'http://voca-ai-engine:8008';
+const PORT = process.env.PORT || 5001;
+const URL_PREFIX = process.env.URL_PREFIX || '/voca-os/api/v1';
+const VOCA_AI_ENGINE_URL = process.env.VOCA_AI_ENGINE_URL || 'http://voca-ai-engine:5008/voca-engine/api/v1';
 
 // Middleware
 app.use(express.json());
@@ -17,7 +18,7 @@ const activeVendorCharacters = new Map(); // vendor_id -> character_config
 const vendorMessageQueue = new Map(); // vendor_id -> message_queue
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get(`${URL_PREFIX}/health`, (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'voca-os',
@@ -34,11 +35,11 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     architecture: 'single-agent-dynamic-characters',
     endpoints: {
-      'GET /health': 'Health check',
-      'POST /api/v1/vendors': 'Register vendor character',
-      'POST /api/v1/messages': 'Process message',
-      'DELETE /api/v1/vendors/:vendor_id': 'Remove vendor character',
-      'GET /api/v1/vendors/:vendor_id/status': 'Get vendor status'
+      [`GET ${URL_PREFIX}/health`]: 'Health check',
+      [`POST ${URL_PREFIX}/vendors`]: 'Register vendor character',
+      [`POST ${URL_PREFIX}/messages`]: 'Process message',
+      [`DELETE ${URL_PREFIX}/vendors/:vendor_id`]: 'Remove vendor character',
+      [`GET ${URL_PREFIX}/vendors/:vendor_id/status`]: 'Get vendor status'
     }
   });
 });
@@ -81,7 +82,7 @@ async function initializeElizaAgent() {
 }
 
 // Register vendor character endpoint
-app.post('/api/v1/vendors', async (req, res) => {
+app.post(`${URL_PREFIX}/vendors`, async (req, res) => {
   try {
     const { vendor_id, agent_config } = req.body;
     
@@ -107,7 +108,7 @@ app.post('/api/v1/vendors', async (req, res) => {
     
     // Notify main engine about vendor registration
     try {
-      await axios.post(`${VOCA_AI_ENGINE_URL}/api/v1/agents/${vendor_id}/status`, {
+      await axios.post(`${VOCA_AI_ENGINE_URL}/agents/${vendor_id}/status`, {
         service: 'voca-os',
         status: 'registered',
         agent_info: {
@@ -137,7 +138,7 @@ app.post('/api/v1/vendors', async (req, res) => {
 });
 
 // Process message endpoint
-app.post('/api/v1/messages', async (req, res) => {
+app.post(`${URL_PREFIX}/messages`, async (req, res) => {
   try {
     const { vendor_id, message, platform, user_id } = req.body;
     
@@ -148,13 +149,56 @@ app.post('/api/v1/messages', async (req, res) => {
       return res.status(404).json({ error: 'Vendor not registered' });
     }
     
-    // Check if ElizaOS agent is running
-    if (!elizaAgentProcess) {
-      return res.status(503).json({ error: 'ElizaOS agent not running' });
-    }
-    
     // Get vendor character configuration
     const characterConfig = activeVendorCharacters.get(vendor_id);
+    
+    // Check if ElizaOS agent is running
+    if (!elizaAgentProcess) {
+      // Provide mock response based on character configuration
+      console.log('ElizaOS agent not running, providing mock response');
+      
+      let response = '';
+      
+      // Check if message matches any example conversations
+      const lowerMessage = message.toLowerCase();
+      const exampleConversations = characterConfig.example_conversations || [];
+      
+      for (const example of exampleConversations) {
+        if (lowerMessage.includes(example.input.toLowerCase().split(' ').slice(0, 3).join(' '))) {
+          response = example.output;
+          break;
+        }
+      }
+      
+      // If no match found, provide a generic response based on character personality
+      if (!response) {
+        response = `Hello! I'm ${characterConfig.name}, your AI assistant. ${characterConfig.personality} How can I help you today?`;
+      }
+      
+      const mockResponse = {
+        vendor_id,
+        platform,
+        user_id,
+        message: message,
+        response: response,
+        timestamp: new Date().toISOString(),
+        character: characterConfig.name,
+        mode: 'mock_response',
+        capabilities: characterConfig.capabilities
+      };
+      
+      // Notify main engine about message processing
+      try {
+        await axios.post(`${VOCA_AI_ENGINE_URL}/messages/${vendor_id}/processed`, {
+          service: 'voca-os',
+          response: mockResponse
+        });
+      } catch (error) {
+        console.error('Failed to notify main engine:', error.message);
+      }
+      
+      return res.json(mockResponse);
+    }
     
     // TODO: Implement actual message processing with ElizaOS
     // This would involve:
@@ -174,7 +218,7 @@ app.post('/api/v1/messages', async (req, res) => {
     
     // Notify main engine about message processing
     try {
-      await axios.post(`${VOCA_AI_ENGINE_URL}/api/v1/messages/${vendor_id}/processed`, {
+      await axios.post(`${VOCA_AI_ENGINE_URL}/messages/${vendor_id}/processed`, {
         service: 'voca-os',
         response
       });
@@ -190,7 +234,7 @@ app.post('/api/v1/messages', async (req, res) => {
 });
 
 // Remove vendor character endpoint
-app.delete('/api/v1/vendors/:vendor_id', async (req, res) => {
+app.delete(`${URL_PREFIX}/vendors/:vendor_id`, async (req, res) => {
   try {
     const { vendor_id } = req.params;
     
@@ -209,7 +253,7 @@ app.delete('/api/v1/vendors/:vendor_id', async (req, res) => {
     
     // Notify main engine about vendor removal
     try {
-      await axios.post(`${VOCA_AI_ENGINE_URL}/api/v1/agents/${vendor_id}/status`, {
+      await axios.post(`${VOCA_AI_ENGINE_URL}/agents/${vendor_id}/status`, {
         service: 'voca-os',
         status: 'removed',
         removed_at: new Date().toISOString()
@@ -229,7 +273,7 @@ app.delete('/api/v1/vendors/:vendor_id', async (req, res) => {
 });
 
 // Get vendor status endpoint
-app.get('/api/v1/vendors/:vendor_id/status', (req, res) => {
+app.get(`${URL_PREFIX}/vendors/:vendor_id/status`, (req, res) => {
   const { vendor_id } = req.params;
   
   const characterConfig = activeVendorCharacters.get(vendor_id);

@@ -19,7 +19,7 @@ router = APIRouter()
 settings = get_settings()
 
 
-@router.get("/")
+@router.get("")
 async def health_check() -> Dict[str, Any]:
     """Basic health check endpoint."""
     return {

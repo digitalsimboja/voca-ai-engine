@@ -120,14 +120,24 @@ class VocaLogger:
             error: Exception object
             context: Optional context data
         """
+        import traceback
+        
         error_data = {
             'error_type': type(error).__name__,
             'error_message': str(error),
-            'error_traceback': getattr(error, '__traceback__', None)
+            'error_traceback': ''.join(traceback.format_exception(type(error), error, error.__traceback__))
         }
         
         if context:
-            error_data.update(context)
+            # Filter out non-serializable objects from context
+            serializable_context = {}
+            for key, value in context.items():
+                try:
+                    json.dumps({key: value})
+                    serializable_context[key] = value
+                except (TypeError, ValueError):
+                    serializable_context[key] = str(value)
+            error_data.update(serializable_context)
         
         self.error("Exception occurred", **error_data)
 

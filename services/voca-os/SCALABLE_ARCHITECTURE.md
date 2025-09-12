@@ -1,4 +1,4 @@
-# Scalable Voca OS Architecture for 10K-1M Vendors
+l# Scalable Voca OS Architecture for 10K-1M Vendors
 
 ## 🎯 **Architecture Overview**
 

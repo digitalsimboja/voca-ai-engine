@@ -1,4 +1,4 @@
-# Voca Connect - AWS Connect Service
+# Voca AI Engine - Main FastAPI Application
 FROM python:3.11-slim
 
 # Install system dependencies
@@ -17,30 +17,31 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create directories
-RUN mkdir -p /app/config /app/lambda /app/logs
+RUN mkdir -p /app/app /app/logs
 
-# Copy configuration
-COPY ../../config/voca-connect/ ./config/
-COPY ../../lambda-functions/ ./lambda/
+# Copy shared utils first and install
+COPY shared-utils/ ./shared-utils/
+RUN cd shared-utils && pip install -e .
 
-# Copy service code
-COPY . ./
+# Copy application code
+COPY app/ ./app/
+COPY config/ ./config/
+COPY api/ ./api/
 
 # Set environment variables
 ENV PYTHONPATH=/app
-ENV PORT=8001
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash voca
 RUN chown -R voca:voca /app
 USER voca
 
-# Expose port
-EXPOSE 8001
+# Expose port (will be set by environment variable)
+EXPOSE $PORT
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
+    CMD curl -f http://localhost:$PORT/health || exit 1
 
-# Start Voca Connect service
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Start FastAPI application
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]

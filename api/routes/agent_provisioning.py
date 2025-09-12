@@ -90,7 +90,11 @@ async def provision_agent(
     """
     try:
         logger.info("Starting agent provisioning", agent_name=request.name)
-        logger.info("Request", request=request)
+        logger.info("Request details", 
+                   agent_name=request.name,
+                   business_type=request.business_type,
+                   channels=request.channels,
+                   languages=request.languages)
         
         # Generate unique agent ID
         agent_id = str(uuid4())
@@ -104,7 +108,7 @@ async def provision_agent(
         background_tasks.add_task(
             _provision_agent_background,
             agent_id,
-            request
+            request.dict()
         )
         
         return AgentProvisioningResponse(
@@ -334,19 +338,20 @@ async def list_vendor_agents(vendor_id: str) -> Dict[str, Any]:
 
 async def _provision_agent_background(
     agent_id: str,
-    request: AgentProvisioningRequest
+    request_data: Dict[str, Any]
 ):
     """Background task for agent provisioning."""
     try:
         logger.info("Background provisioning started", agent_id=agent_id)
         
         # TODO: Implement actual provisioning logic:
-        # 1. Save agent to database
+        # 1. Call Voca AI Engine service to provision the agent
         # 2. Call Voca OS service if social media channels requested
         # 3. Call Voca Connect service if voice/SMS channels requested
         # 4. Update provisioning status
         
         logger.info("Background provisioning completed", agent_id=agent_id)
+        
         
     except Exception as e:
         logger.log_error(e, context={"agent_id": agent_id, "action": "background_provisioning"})
