@@ -1,10 +1,12 @@
 import express from 'express';
+import { AgentPoolManager } from '../../services/pool-manager.js';
 
 /**
  * Pool routes for managing agent pools
  */
-function createPoolRoutes(poolManager) {
+function createPoolRoutes() {
   const router = express.Router();
+  const poolManager = new AgentPoolManager();
 
   /**
    * Get all pool metrics
@@ -41,8 +43,7 @@ function createPoolRoutes(poolManager) {
           poolId: pool.poolId,
           maxVendors: pool.maxVendors,
           vendorCount: pool.activeVendors.size,
-          isInitialized: pool.isInitialized,
-          agentPort: pool.agentPort
+          isInitialized: pool.isInitialized
         }
       });
     } catch (error) {
@@ -72,7 +73,6 @@ function createPoolRoutes(poolManager) {
         maxVendors: pool.maxVendors,
         vendorCount: pool.activeVendors.size,
         isInitialized: pool.isInitialized,
-        agentPort: pool.agentPort,
         metrics: pool.getMetrics()
       });
     } catch (error) {
@@ -120,11 +120,15 @@ function createPoolRoutes(poolManager) {
         return res.status(404).json({ error: 'Pool not found' });
       }
       
-      const vendors = Array.from(pool.activeVendors.keys()).map(vendorId => ({
-        vendor_id: vendorId,
-        character: pool.activeVendors.get(vendorId).name,
-        registered_at: pool.activeVendors.get(vendorId).created_at
-      }));
+      const vendors = Array.from(pool.activeVendors.keys()).map(vendorId => {
+        const vendorData = pool.activeVendors.get(vendorId);
+        const characterConfig = pool.elizaosManager.characters.get(vendorId);
+        return {
+          vendor_id: vendorId,
+          character: characterConfig?.name || vendorId,
+          registered_at: vendorData.registeredAt
+        };
+      });
       
       res.json({
         poolId: pool_id,

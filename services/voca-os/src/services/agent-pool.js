@@ -1,7 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { createDynamicCharacter } from '../utils/character-utils.js';
-import { VocaClient } from './voca-client.js';
+import { EmbeddedElizaOSManager } from '../core/runtime-manager.js';
 
 /**
  * AgentPool class manages a single pool of vendors using ElizaOS runtime
@@ -13,8 +12,7 @@ class AgentPool {
     this.maxVendors = maxVendors;
     this.activeVendors = new Map();
     this.isInitialized = false;
-    this.vocaClient = new VocaClient();
-    this.characterCache = new Map();
+    this.elizaosManager = new EmbeddedElizaOSManager();
     this.metrics = {
       messageCount: 0,
       responseTime: 0,
@@ -31,17 +29,10 @@ class AgentPool {
     try {
       console.log(`Initializing Agent Pool ${this.poolId}...`);
       
-      // Initialize VocaClient connection to ElizaOS runtime
-      const success = await this.vocaClient.connect();
-      
-      if (success) {
-        this.isInitialized = true;
-        console.log(`Agent Pool ${this.poolId} initialized successfully with ElizaOS runtime`);
-        return true;
-      } else {
-        console.error(`Failed to initialize Pool ${this.poolId} with ElizaOS runtime`);
-        return false;
-      }
+      // EmbeddedElizaOSManager is always initialized when created
+      this.isInitialized = true;
+      console.log(`Agent Pool ${this.poolId} initialized successfully with ElizaOS runtime`);
+      return true;
     } catch (error) {
       console.error(`Error initializing Pool ${this.poolId}:`, error);
       return false;
@@ -61,31 +52,37 @@ class AgentPool {
 
     console.log(`Registering vendor ${vendorId} in Pool ${this.poolId}`);
     
-    // Create dynamic character configuration using the utility function
-    const characterConfig = createDynamicCharacter(vendorId, agentConfig);
+    // Register vendor with EmbeddedElizaOSManager (handles character creation internally)
+    const elizaosResult = await this.elizaosManager.registerVendor(vendorId, agentConfig);
     
-    // Store the character configuration
-    this.activeVendors.set(vendorId, characterConfig);
+    // Store vendor reference in pool
+    this.activeVendors.set(vendorId, {
+      vendorId,
+      agentConfig,
+      agentId: elizaosResult.agent_id,
+      registeredAt: new Date().toISOString()
+    });
     
-    // Cache character in VocaClient
-    this.characterCache.set(vendorId, characterConfig);
-    const vocaClientResult = await this.vocaClient.loadCharacter(vendorId, agentConfig);
+    // Character config is now written to disk in runtime-manager.js
+    // Just verify it exists in the characters map
+    const characterConfig = this.elizaosManager.characters.get(vendorId);
+    const characterPath = path.join(process.cwd(), 'characters', 'dynamic', `${vendorId}.json`);
     
-    // Save character config to dynamic directory
-    const dynamicDir = path.join(process.cwd(), 'characters', 'dynamic');
-    if (!fs.existsSync(dynamicDir)) {
-      fs.mkdirSync(dynamicDir, { recursive: true });
-    }
-    
-    const characterPath = path.join(dynamicDir, `${vendorId}.json`);
-    fs.writeFileSync(characterPath, JSON.stringify(characterConfig, null, 2));
+    console.log(`🔍 Debug: Character config for ${vendorId}:`, {
+      hasCharacter: !!characterConfig,
+      characterName: characterConfig?.name,
+      hasSystem: !!characterConfig?.system,
+      hasConfiguration: !!characterConfig?.configuration,
+      hasDatabase: !!characterConfig?.settings?.database,
+      fileExists: fs.existsSync(characterPath)
+    });
     
     this.metrics.vendorCount = this.activeVendors.size;
     
     return {
       poolId: this.poolId,
       vendorId,
-      agent_id: vocaClientResult?.agent_id || null,  // ElizaOS-generated agent ID
+      agent_id: elizaosResult.agent_id,
       status: 'registered',
       config: agentConfig,
       character_path: characterPath,
@@ -111,21 +108,11 @@ class AgentPool {
     try {
       console.log(`Processing message for vendor ${vendorId} in Pool ${this.poolId} on ${platform}`);
       
-      // Get vendor character configuration
-      const characterConfig = this.activeVendors.get(vendorId);
+      // Process message through EmbeddedElizaOSManager
+      const elizaosResponse = await this.elizaosManager.processMessage(vendorId, message, platform, userId);
       
-      // Create message context for ElizaClient
-      const messageContext = {
-        character: vendorId, // Use vendorId as character name
-        message: message,
-        platform: platform,
-        userId: userId,
-        vendorId: vendorId,
-        characterConfig: characterConfig
-      };
-      
-      // Process message through VocaClient (handles character switching automatically)
-      const vocaResponse = await this.vocaClient.processMessage(messageContext);
+      // Get character config for response formatting
+      const characterConfig = this.elizaosManager.characters.get(vendorId);
       
       // Format response for API
       const response = {
@@ -134,12 +121,12 @@ class AgentPool {
         platform,
         user_id: userId,
         message: message,
-        response: vocaResponse.response,
-        timestamp: vocaResponse.timestamp,
-        character: characterConfig.name,
-        mode: vocaResponse.mode,
-        processing_time: Date.now() - startTime,
-        voca_status: this.vocaClient.getStatus()
+        response: elizaosResponse.response,
+        timestamp: elizaosResponse.timestamp,
+        character: characterConfig?.name || vendorId,
+        mode: elizaosResponse.mode,
+        processing_time: elizaosResponse.processing_time || (Date.now() - startTime),
+        elizaos_status: this.elizaosManager.getStatus()
       };
       
       // Update metrics
@@ -147,7 +134,7 @@ class AgentPool {
       this.metrics.responseTime = (this.metrics.responseTime + response.processing_time) / 2;
       
       // Track character switches
-      if (vocaResponse.mode === 'voca_response') {
+      if (elizaosResponse.mode === 'embedded_elizaos') {
         this.metrics.characterSwitches++;
       }
       
@@ -157,16 +144,16 @@ class AgentPool {
       console.error(`Error processing message for vendor ${vendorId}:`, error);
       
       // Fallback to mock response on error
-      const characterConfig = this.activeVendors.get(vendorId);
+      const characterConfig = this.elizaosManager.characters.get(vendorId);
       const fallbackResponse = {
         poolId: this.poolId,
         vendor_id: vendorId,
         platform,
         user_id: userId,
         message: message,
-        response: `I'm sorry, I'm having trouble processing your message right now. I'm ${characterConfig.name}, your AI assistant. Please try again in a moment.`,
+        response: `I'm sorry, I'm having trouble processing your message right now. I'm ${characterConfig?.name || vendorId}, your AI assistant. Please try again in a moment.`,
         timestamp: new Date().toISOString(),
-        character: characterConfig.name,
+        character: characterConfig?.name || vendorId,
         mode: 'error_fallback',
         processing_time: Date.now() - startTime,
         error: error.message
@@ -186,7 +173,7 @@ class AgentPool {
       isInitialized: this.isInitialized,
       vendorCount: this.activeVendors.size,
       maxVendors: this.maxVendors,
-      vocaClient: this.vocaClient.getStatus(),
+      elizaosManager: this.elizaosManager.getStatus(),
       ...this.metrics
     };
   }
@@ -197,12 +184,11 @@ class AgentPool {
   async shutdown() {
     console.log(`Shutting down Pool ${this.poolId}...`);
     
-    // Disconnect VocaClient
-    await this.vocaClient.disconnect();
+    // Shutdown EmbeddedElizaOSManager
+    await this.elizaosManager.shutdown();
     
     this.isInitialized = false;
     this.activeVendors.clear();
-    this.characterCache.clear();
   }
 }
 

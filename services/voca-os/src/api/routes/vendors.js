@@ -1,9 +1,12 @@
 import express from 'express';
+import { AgentPoolManager } from '../../services/pool-manager.js';
 
 /**
  * Vendor routes for managing vendor characters and status
  */
-function createVendorRoutes(poolManager, VOCA_AI_ENGINE_URL) {
+function createVendorRoutes(VOCA_AI_ENGINE_URL) {
+
+  const poolManager = new AgentPoolManager();
   const router = express.Router();
 
   /**
@@ -17,30 +20,9 @@ function createVendorRoutes(poolManager, VOCA_AI_ENGINE_URL) {
       console.log('Agent config received:', JSON.stringify(agent_config, null, 2));
       
       const result = await poolManager.assignVendor(vendor_id, agent_config);
-      
-      // Notify main engine about vendor registration
-      try {
-        await fetch(`${VOCA_AI_ENGINE_URL}/agents/${vendor_id}/status`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            service: 'voca-os',
-            status: 'registered',
-            agent_info: {
-              vendor_id,
-              pool_id: result.poolId,
-              status: 'active',
-              config: agent_config,
-              character_path: result.character_path
-            }
-          })
-        });
-      } catch (error) {
-        console.error('Failed to notify main engine:', error.message);
-      }
-      
+
+      console.log('Vendor registered:', JSON.stringify(result, null, 2));
+
       res.json({
         success: true,
         vendor: result

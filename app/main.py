@@ -58,14 +58,6 @@ app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 async def startup_event():
     """Initialize the application on startup."""
     logger.info("🚀 Starting Voca AI Engine...")
-    logger.info(f"Environment: {settings.app_env}")
-    logger.info(f"Debug mode: {settings.debug}")
-    logger.info(f"Database URL: {settings.database_url}")
-    logger.info(f"Voca OS URL: {settings.voca_os_url}")
-    logger.info(f"Voca Connect URL: {settings.voca_connect_url}")
-    
-    # TODO: Test database connection when shared utils is working
-    logger.info("✅ Voca AI Engine started successfully")
 
 @app.on_event("shutdown")
 async def shutdown_event():

@@ -5,22 +5,18 @@
   "type": "module",
   "main": "voca-os-service.js",
   "scripts": {
-    "start": "node voca-os-service.js",
-    "dev": "nodemon voca-os-service.js",
+    "start": "bun run voca-os-service.js",
+    "dev": "bun --watch voca-os-service.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@elizaos/core": "^1.4.2",
-    "@elizaos/plugin-bootstrap": "^1.4.2",
-    "@elizaos/plugin-openai": "^1.0.9",
-    "@elizaos/plugin-sql": "^1.5.8",
+    "@elizaos/core": "^1.4.4",
+    "@elizaos/plugin-openai": "^1.0.11",
+    "@elizaos/plugin-sql": "^1.4.4",
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "uuid": "^9.0.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
   },
   "keywords": [
     "voca",

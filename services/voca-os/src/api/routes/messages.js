@@ -1,10 +1,12 @@
 import express from 'express';
 import axios from 'axios';
+import { AgentPoolManager } from '../../services/pool-manager.js';
 
 /**
  * Message routes for processing vendor messages
  */
-function createMessageRoutes(poolManager, VOCA_AI_ENGINE_URL) {
+function createMessageRoutes(VOCA_AI_ENGINE_URL) {
+  const poolManager = new AgentPoolManager();
   const router = express.Router();
 
   /**

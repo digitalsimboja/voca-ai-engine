@@ -9,7 +9,8 @@
     }
   },
   "plugins": [
-    "@elizaos/plugin-bootstrap"
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai"
   ],
   "bio": [
     "I am Voca AI Assistant, your AI assistant for Voca AI vendors.",

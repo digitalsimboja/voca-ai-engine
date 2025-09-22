@@ -7,12 +7,12 @@ import { createHealthRoutes } from './health.js';
  * Main routes configuration
  * Sets up all route modules with proper middleware and error handling
  */
-function setupRoutes(app, poolManager, URL_PREFIX, VOCA_AI_ENGINE_URL) {
+function setupRoutes(app, URL_PREFIX, VOCA_AI_ENGINE_URL) {
   // Create route instances
-  const vendorRoutes = createVendorRoutes(poolManager, VOCA_AI_ENGINE_URL);
-  const messageRoutes = createMessageRoutes(poolManager, VOCA_AI_ENGINE_URL);
-  const poolRoutes = createPoolRoutes(poolManager);
-  const healthRoutes = createHealthRoutes(poolManager);
+  const vendorRoutes = createVendorRoutes(VOCA_AI_ENGINE_URL);
+  const messageRoutes = createMessageRoutes(VOCA_AI_ENGINE_URL);
+  const poolRoutes = createPoolRoutes();
+  const healthRoutes = createHealthRoutes();
 
   // Mount routes with URL prefix
   app.use(`${URL_PREFIX}/vendors`, vendorRoutes);

@@ -1,10 +1,12 @@
 import express from 'express';
+import { AgentPoolManager } from '../../services/pool-manager.js';
 
 /**
  * Health routes for service monitoring and status
  */
-function createHealthRoutes(poolManager) {
+function createHealthRoutes() {
   const router = express.Router();
+  const poolManager = new AgentPoolManager();
 
   /**
    * Health check endpoint
@@ -18,7 +20,7 @@ function createHealthRoutes(poolManager) {
       const totalPools = metrics.totalPools;
       const initializedPools = metrics.pools.filter(pool => pool.isInitialized).length;
       const healthyPools = metrics.pools.filter(pool => 
-        pool.isInitialized && pool.vocaClient?.isConnected
+        pool.isInitialized && pool.elizaosManager?.isInitialized
       ).length;
       
       const healthStatus = {
@@ -81,10 +83,10 @@ function createHealthRoutes(poolManager) {
           errorCount: pool.errorCount,
           responseTime: pool.responseTime,
           characterSwitches: pool.characterSwitches,
-          vocaClient: {
-            isConnected: pool.vocaClient?.isConnected || false,
-            currentCharacter: pool.vocaClient?.currentCharacter || null,
-            cachedCharacters: pool.vocaClient?.cachedCharacters || []
+          elizaosManager: {
+            isInitialized: pool.elizaosManager?.isInitialized || false,
+            totalAgents: pool.elizaosManager?.totalAgents || 0,
+            availableVendors: pool.elizaosManager?.availableVendors || []
           }
         })),
         totals: {
