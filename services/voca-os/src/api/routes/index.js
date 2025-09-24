@@ -2,17 +2,21 @@ import { createVendorRoutes } from './vendors.js';
 import { createMessageRoutes } from './messages.js';
 import { createPoolRoutes } from './pools.js';
 import { createHealthRoutes } from './health.js';
+import { AgentPoolManager } from '../../services/pool-manager.js';
 
 /**
  * Main routes configuration
  * Sets up all route modules with proper middleware and error handling
  */
 function setupRoutes(app, URL_PREFIX, VOCA_AI_ENGINE_URL) {
-  // Create route instances
-  const vendorRoutes = createVendorRoutes(VOCA_AI_ENGINE_URL);
-  const messageRoutes = createMessageRoutes(VOCA_AI_ENGINE_URL);
-  const poolRoutes = createPoolRoutes();
-  const healthRoutes = createHealthRoutes();
+  // Create shared pool manager instance
+  const sharedPoolManager = new AgentPoolManager();
+  
+  // Create route instances with shared pool manager
+  const vendorRoutes = createVendorRoutes(VOCA_AI_ENGINE_URL, sharedPoolManager);
+  const messageRoutes = createMessageRoutes(VOCA_AI_ENGINE_URL, sharedPoolManager);
+  const poolRoutes = createPoolRoutes(sharedPoolManager);
+  const healthRoutes = createHealthRoutes(sharedPoolManager);
 
   // Mount routes with URL prefix
   app.use(`${URL_PREFIX}/vendors`, vendorRoutes);

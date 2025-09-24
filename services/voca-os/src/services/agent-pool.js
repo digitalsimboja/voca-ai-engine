@@ -1,6 +1,6 @@
 import path from 'path';
-import fs from 'fs';
 import { EmbeddedElizaOSManager } from '../core/runtime-manager.js';
+import { cache } from './cache.js';
 
 /**
  * AgentPool class manages a single pool of vendors using ElizaOS runtime
@@ -10,16 +10,17 @@ class AgentPool {
   constructor(poolId, maxVendors = 5000) {
     this.poolId = poolId;
     this.maxVendors = maxVendors;
-    this.activeVendors = new Map();
     this.isInitialized = false;
     this.elizaosManager = new EmbeddedElizaOSManager();
-    this.metrics = {
+    
+    // Initialize metrics in cache
+    cache.setPoolMetrics(poolId, {
       messageCount: 0,
       responseTime: 0,
       errorCount: 0,
       vendorCount: 0,
       characterSwitches: 0
-    };
+    });
   }
 
   /**
@@ -46,38 +47,29 @@ class AgentPool {
    * @returns {Object} Registration result
    */
   async registerVendor(vendorId, agentConfig) {
-    if (this.activeVendors.size >= this.maxVendors) {
+    const currentVendorCount = cache.getVendorCountForPool(this.poolId);
+    if (currentVendorCount >= this.maxVendors) {
       throw new Error(`Pool ${this.poolId} is at maximum capacity (${this.maxVendors} vendors)`);
     }
-
-    console.log(`Registering vendor ${vendorId} in Pool ${this.poolId}`);
     
-    // Register vendor with EmbeddedElizaOSManager (handles character creation internally)
     const elizaosResult = await this.elizaosManager.registerVendor(vendorId, agentConfig);
+    const { vendor_id, config, agent_id, registeredAt } = elizaosResult;
     
-    // Store vendor reference in pool
-    this.activeVendors.set(vendorId, {
+    // Store vendor details in cache
+    const vendorData = {
       vendorId,
-      agentConfig,
-      agentId: elizaosResult.agent_id,
-      registeredAt: new Date().toISOString()
-    });
+      agentConfig: config,
+      agentId: agent_id,
+      registeredAt: registeredAt
+    };
+    cache.setVendorDetails(vendorId, vendorData);
     
-    // Character config is now written to disk in runtime-manager.js
-    // Just verify it exists in the characters map
-    const characterConfig = this.elizaosManager.characters.get(vendorId);
     const characterPath = path.join(process.cwd(), 'characters', 'dynamic', `${vendorId}.json`);
-    
-    console.log(`🔍 Debug: Character config for ${vendorId}:`, {
-      hasCharacter: !!characterConfig,
-      characterName: characterConfig?.name,
-      hasSystem: !!characterConfig?.system,
-      hasConfiguration: !!characterConfig?.configuration,
-      hasDatabase: !!characterConfig?.settings?.database,
-      fileExists: fs.existsSync(characterPath)
-    });
-    
-    this.metrics.vendorCount = this.activeVendors.size;
+
+    // Update vendor count in pool metrics
+    const metrics = cache.getPoolMetrics(this.poolId);
+    metrics.vendorCount = cache.getVendorCountForPool(this.poolId);
+    cache.setPoolMetrics(this.poolId, metrics);
     
     return {
       poolId: this.poolId,
@@ -99,20 +91,17 @@ class AgentPool {
    * @returns {Object} Response object
    */
   async processMessage(vendorId, message, platform, userId) {
-    if (!this.activeVendors.has(vendorId)) {
+    const vendorDetails = cache.getVendorDetails(vendorId);
+    if (!vendorDetails) {
       throw new Error(`Vendor ${vendorId} not registered in Pool ${this.poolId}`);
     }
 
-    const startTime = Date.now();
-    
     try {
       console.log(`Processing message for vendor ${vendorId} in Pool ${this.poolId} on ${platform}`);
       
       // Process message through EmbeddedElizaOSManager
       const elizaosResponse = await this.elizaosManager.processMessage(vendorId, message, platform, userId);
-      
-      // Get character config for response formatting
-      const characterConfig = this.elizaosManager.characters.get(vendorId);
+      const characterConfig = cache.getCharacterConfig(vendorId);
       
       // Format response for API
       const response = {
@@ -125,26 +114,30 @@ class AgentPool {
         timestamp: elizaosResponse.timestamp,
         character: characterConfig?.name || vendorId,
         mode: elizaosResponse.mode,
-        processing_time: elizaosResponse.processing_time || (Date.now() - startTime),
         elizaos_status: this.elizaosManager.getStatus()
       };
       
-      // Update metrics
-      this.metrics.messageCount++;
-      this.metrics.responseTime = (this.metrics.responseTime + response.processing_time) / 2;
+      // Update metrics in cache
+      const metrics = cache.getPoolMetrics(this.poolId);
+      metrics.messageCount++;
+      metrics.responseTime = (metrics.responseTime + response.processing_time) / 2;
       
       // Track character switches
       if (elizaosResponse.mode === 'embedded_elizaos') {
-        this.metrics.characterSwitches++;
+        metrics.characterSwitches++;
       }
+      cache.setPoolMetrics(this.poolId, metrics);
       
       return response;
     } catch (error) {
-      this.metrics.errorCount++;
+      // Update error count in cache
+      const metrics = cache.getPoolMetrics(this.poolId);
+      metrics.errorCount++;
+      cache.setPoolMetrics(this.poolId, metrics);
       console.error(`Error processing message for vendor ${vendorId}:`, error);
       
       // Fallback to mock response on error
-      const characterConfig = this.elizaosManager.characters.get(vendorId);
+      const characterConfig = cache.getCharacterConfig(vendorId);
       const fallbackResponse = {
         poolId: this.poolId,
         vendor_id: vendorId,
@@ -155,7 +148,6 @@ class AgentPool {
         timestamp: new Date().toISOString(),
         character: characterConfig?.name || vendorId,
         mode: 'error_fallback',
-        processing_time: Date.now() - startTime,
         error: error.message
       };
       
@@ -168,14 +160,32 @@ class AgentPool {
    * @returns {Object} Pool metrics
    */
   getMetrics() {
+    const metrics = cache.getPoolMetrics(this.poolId);
     return {
       poolId: this.poolId,
       isInitialized: this.isInitialized,
-      vendorCount: this.activeVendors.size,
+      vendorCount: cache.getVendorCountForPool(this.poolId),
       maxVendors: this.maxVendors,
       elizaosManager: this.elizaosManager.getStatus(),
-      ...this.metrics
+      ...metrics
     };
+  }
+
+  /**
+   * Remove a vendor from this pool
+   * @param {string} vendorId - The vendor identifier
+   * @returns {Object} Removal result
+   */
+  async removeVendor(vendorId) {
+    // Remove from cache
+    cache.removeVendor(vendorId);
+    
+    // Update vendor count in pool metrics
+    const metrics = cache.getPoolMetrics(this.poolId);
+    metrics.vendorCount = cache.getVendorCountForPool(this.poolId);
+    cache.setPoolMetrics(this.poolId, metrics);
+    
+    return { success: true, message: `Vendor ${vendorId} removed from Pool ${this.poolId}` };
   }
 
   /**
@@ -188,7 +198,12 @@ class AgentPool {
     await this.elizaosManager.shutdown();
     
     this.isInitialized = false;
-    this.activeVendors.clear();
+    
+    // Remove all vendors from this pool from cache
+    const vendorsInPool = cache.getVendorsForPool(this.poolId);
+    for (const vendorId of vendorsInPool) {
+      cache.removeVendor(vendorId);
+    }
   }
 }
 

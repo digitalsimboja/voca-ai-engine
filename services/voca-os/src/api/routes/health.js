@@ -4,9 +4,8 @@ import { AgentPoolManager } from '../../services/pool-manager.js';
 /**
  * Health routes for service monitoring and status
  */
-function createHealthRoutes() {
+function createHealthRoutes(poolManager) {
   const router = express.Router();
-  const poolManager = new AgentPoolManager();
 
   /**
    * Health check endpoint

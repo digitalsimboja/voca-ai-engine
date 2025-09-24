@@ -1,19 +1,16 @@
 import express from 'express';
-import axios from 'axios';
-import { AgentPoolManager } from '../../services/pool-manager.js';
 
 /**
  * Message routes for processing vendor messages
  */
-function createMessageRoutes(VOCA_AI_ENGINE_URL) {
-  const poolManager = new AgentPoolManager();
+function createMessageRoutes(VOCA_AI_ENGINE_URL, poolManager) {
   const router = express.Router();
 
   /**
    * Process message
    * POST /messages
    */
-  router.post('/', async (req, res) => {
+  router.post('/chat', async (req, res) => {
     try {
       const { vendor_id, message, platform, user_id } = req.body;
       
@@ -28,16 +25,6 @@ function createMessageRoutes(VOCA_AI_ENGINE_URL) {
       console.log(`Processing message for vendor ${vendor_id} on ${platform}`);
       
       const response = await poolManager.routeMessage(vendor_id, message, platform, user_id);
-      
-      // Notify main engine about message processing
-      try {
-        await axios.post(`${VOCA_AI_ENGINE_URL}/messages/${vendor_id}/processed`, {
-          service: 'voca-os',
-          response
-        });
-      } catch (error) {
-        console.error('Failed to notify main engine:', error.message);
-      }
       
       res.json(response);
     } catch (error) {

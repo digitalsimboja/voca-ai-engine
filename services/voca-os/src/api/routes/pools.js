@@ -1,12 +1,12 @@
 import express from 'express';
 import { AgentPoolManager } from '../../services/pool-manager.js';
+import { cache } from '../../services/cache.js';
 
 /**
  * Pool routes for managing agent pools
  */
-function createPoolRoutes() {
+function createPoolRoutes(poolManager) {
   const router = express.Router();
-  const poolManager = new AgentPoolManager();
 
   /**
    * Get all pool metrics
@@ -120,13 +120,13 @@ function createPoolRoutes() {
         return res.status(404).json({ error: 'Pool not found' });
       }
       
-      const vendors = Array.from(pool.activeVendors.keys()).map(vendorId => {
-        const vendorData = pool.activeVendors.get(vendorId);
-        const characterConfig = pool.elizaosManager.characters.get(vendorId);
+      const vendors = cache.getVendorsForPool(poolId).map(vendorId => {
+        const vendorData = cache.getVendorDetails(vendorId);
+        const characterConfig = cache.getCharacterConfig(vendorId);
         return {
           vendor_id: vendorId,
           character: characterConfig?.name || vendorId,
-          registered_at: vendorData.registeredAt
+          registered_at: vendorData?.registeredAt
         };
       });
       

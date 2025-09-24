@@ -66,7 +66,7 @@ class AgentLookupRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional context")
 
 
-@router.post("/route", response_model=MessageResponse)
+@router.post("/chat", response_model=MessageResponse)
 async def route_message(request: IncomingMessage) -> MessageResponse:
     """
     Route incoming message to the correct agent.

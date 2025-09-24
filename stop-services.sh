@@ -72,6 +72,19 @@ show_status() {
     echo ""
 }
 
+# Function to clean up dynamic characters directory
+cleanup_dynamic_characters() {
+    local dynamic_chars_dir="$HOME/dev/bojalabs/voca-ai-engine/services/voca-os/characters/dynamic"
+    
+    if [ -d "$dynamic_chars_dir" ]; then
+        print_info "Cleaning up dynamic characters directory..."
+        rm -rf "$dynamic_chars_dir"
+        print_status "Dynamic characters directory removed: $dynamic_chars_dir"
+    else
+        print_info "Dynamic characters directory not found: $dynamic_chars_dir"
+    fi
+}
+
 # Function to stop all services
 stop_all_services() {
     print_header "Stopping all Voca AI services..."
@@ -91,6 +104,9 @@ stop_all_services() {
     
     # Clean up any remaining volumes
     docker volume prune -f
+    
+    # Clean up dynamic characters directory
+    cleanup_dynamic_characters
     
     print_status "All services stopped and volumes removed"
 }
@@ -114,6 +130,9 @@ clean_up() {
         
         # Remove any dangling volumes
         docker volume ls -q -f dangling=true | xargs -r docker volume rm 2>/dev/null || true
+        
+        # Clean up dynamic characters directory
+        cleanup_dynamic_characters
         
         print_status "All containers, networks, and volumes removed"
     else

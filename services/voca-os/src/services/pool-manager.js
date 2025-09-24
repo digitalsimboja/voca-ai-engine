@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { AgentPool } from './agent-pool.js';
+import { cache } from './cache.js';
 
 /**
  * AgentPoolManager class manages multiple agent pools
@@ -8,10 +9,17 @@ import { AgentPool } from './agent-pool.js';
  */
 class AgentPoolManager {
   constructor() {
-    this.pools = new Map();
-    this.vendorPoolMap = new Map();
     this.nextPoolId = 1;
     this.maxVendorsPerPool = parseInt(process.env.MAX_VENDORS_PER_POOL) || 5000;
+    
+    // Initialize nextPoolId based on existing pools in cache
+    const existingPools = cache.getAllPools();
+    for (const poolId of existingPools.keys()) {
+      const poolNum = parseInt(poolId.replace('pool-', ''));
+      if (poolNum >= this.nextPoolId) {
+        this.nextPoolId = poolNum + 1;
+      }
+    }
   }
 
   /**
@@ -25,7 +33,7 @@ class AgentPoolManager {
     
     const success = await pool.initialize();
     if (success) {
-      this.pools.set(actualPoolId, pool);
+      cache.setPool(actualPoolId, pool);
       console.log(`Created Agent Pool ${actualPoolId}`);
     }
     
@@ -37,9 +45,11 @@ class AgentPoolManager {
    * @returns {AgentPool} Available pool or null if none found
    */
   async findAvailablePool() {
-    // Find a pool with available capacity
-    for (const [poolId, pool] of this.pools) {
-      if (pool.activeVendors.size < pool.maxVendors) {
+    // Find a pool with available capacity using cache
+    const pools = cache.getAllPools();
+    for (const [poolId, pool] of pools) {
+      const vendorCount = cache.getVendorCountForPool(poolId);
+      if (vendorCount < pool.maxVendors) {
         return pool;
       }
     }
@@ -58,7 +68,7 @@ class AgentPoolManager {
   async assignVendor(vendorId, vendorConfig) {
     const pool = await this.findAvailablePool();
     const result = await pool.registerVendor(vendorId, vendorConfig);
-    this.vendorPoolMap.set(vendorId, pool.poolId);
+    cache.setVendorPoolMapping(vendorId, pool.poolId);
     return result;
   }
 
@@ -71,12 +81,14 @@ class AgentPoolManager {
    * @returns {Object} Response from the pool
    */
   async routeMessage(vendorId, message, platform, userId) {
-    const poolId = this.vendorPoolMap.get(vendorId);
+    const poolId = cache.getVendorPoolId(vendorId);
+   
     if (!poolId) {
       throw new Error(`Vendor ${vendorId} not assigned to any pool`);
     }
     
-    const pool = this.pools.get(poolId);
+    const pool = cache.getPool(poolId);
+    
     if (!pool) {
       throw new Error(`Pool ${poolId} not found`);
     }
@@ -90,22 +102,18 @@ class AgentPoolManager {
    * @returns {Object} Removal result
    */
   async removeVendor(vendorId) {
-    const poolId = this.vendorPoolMap.get(vendorId);
+    const poolId = cache.getVendorPoolId(vendorId);
     if (!poolId) {
       throw new Error(`Vendor ${vendorId} not found`);
     }
     
-    const pool = this.pools.get(poolId);
+    const pool = cache.getPool(poolId);
     if (!pool) {
       throw new Error(`Pool ${poolId} not found`);
     }
     
-    // Remove from pool
-    pool.activeVendors.delete(vendorId);
-    pool.metrics.vendorCount = pool.activeVendors.size;
-    
-    // Remove from mapping
-    this.vendorPoolMap.delete(vendorId);
+    // Remove from pool (this will also remove from cache via pool's removeVendor method)
+    await pool.removeVendor(vendorId);
     
     // Remove character file
     const characterPath = path.join(__dirname, '..', 'characters', 'dynamic', `${vendorId}.json`);
@@ -124,18 +132,18 @@ class AgentPoolManager {
    * @returns {Object|null} Vendor status or null if not found
    */
   getVendorStatus(vendorId) {
-    const poolId = this.vendorPoolMap.get(vendorId);
+    const poolId = cache.getVendorPoolId(vendorId);
     if (!poolId) {
       return null;
     }
     
-    const pool = this.pools.get(poolId);
+    const pool = cache.getPool(poolId);
     if (!pool) {
       return null;
     }
     
-    const characterConfig = pool.activeVendors.get(vendorId);
-    if (!characterConfig) {
+    const vendorDetails = cache.getVendorDetails(vendorId);
+    if (!vendorDetails) {
       return null;
     }
     
@@ -143,8 +151,8 @@ class AgentPoolManager {
       vendor_id: vendorId,
       pool_id: poolId,
       status: 'active',
-      character: characterConfig.name,
-      registered_at: characterConfig.created_at,
+      character: vendorDetails.agentConfig?.name || vendorId,
+      registered_at: vendorDetails.registeredAt,
       agent_status: pool.isInitialized ? 'running' : 'stopped'
     };
   }
@@ -154,13 +162,14 @@ class AgentPoolManager {
    * @returns {Object} Combined metrics from all pools
    */
   getAllMetrics() {
+    const pools = cache.getAllPools();
     const metrics = {
-      totalPools: this.pools.size,
-      totalVendors: this.vendorPoolMap.size,
+      totalPools: pools.size,
+      totalVendors: cache.getAllVendorMappings().size,
       pools: []
     };
     
-    for (const [poolId, pool] of this.pools) {
+    for (const [poolId, pool] of pools) {
       metrics.pools.push(pool.getMetrics());
     }
     
@@ -173,7 +182,7 @@ class AgentPoolManager {
    * @returns {AgentPool|null} The pool or null if not found
    */
   getPool(poolId) {
-    return this.pools.get(poolId) || null;
+    return cache.getPool(poolId);
   }
 
   /**
@@ -181,7 +190,7 @@ class AgentPoolManager {
    * @returns {Map} Map of all pools
    */
   getAllPools() {
-    return this.pools;
+    return cache.getAllPools();
   }
 
   /**
@@ -190,12 +199,12 @@ class AgentPoolManager {
   async shutdownAll() {
     console.log('Shutting down all agent pools...');
     
-    for (const [poolId, pool] of this.pools) {
+    const pools = cache.getAllPools();
+    for (const [poolId, pool] of pools) {
       await pool.shutdown();
     }
     
-    this.pools.clear();
-    this.vendorPoolMap.clear();
+    cache.clear();
   }
 }
 

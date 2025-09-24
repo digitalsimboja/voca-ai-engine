@@ -1,12 +1,8 @@
 import express from 'express';
-import { AgentPoolManager } from '../../services/pool-manager.js';
-
 /**
  * Vendor routes for managing vendor characters and status
  */
-function createVendorRoutes(VOCA_AI_ENGINE_URL) {
-
-  const poolManager = new AgentPoolManager();
+function createVendorRoutes(VOCA_AI_ENGINE_URL, poolManager) {
   const router = express.Router();
 
   /**
@@ -15,14 +11,8 @@ function createVendorRoutes(VOCA_AI_ENGINE_URL) {
    */
   router.post('/', async (req, res) => {
     try {
-      const { vendor_id, agent_config } = req.body;
-
-      console.log('Agent config received:', JSON.stringify(agent_config, null, 2));
-      
+      const { vendor_id, agent_config } = req.body;      
       const result = await poolManager.assignVendor(vendor_id, agent_config);
-
-      console.log('Vendor registered:', JSON.stringify(result, null, 2));
-
       res.json({
         success: true,
         vendor: result
