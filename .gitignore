@@ -354,3 +354,7 @@ settings.local.*
 
 # Project specific
 # Add any project-specific files or directories here
+
+# Voca AI Engine specific
+services/voca-os/characters/dynamic/
+services/voca-os/characters/dynamic/**
