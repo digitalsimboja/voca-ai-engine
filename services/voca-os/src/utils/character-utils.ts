@@ -3,25 +3,36 @@
  */
 import path from "path";
 import fs from "fs";
+import { Character } from '@elizaos/core';
+import {
+  AgentConfig,
+  VocaCharacter,
+  Profile,
+  CustomerService,
+  AICapabilities,
+  SocialMedia,
+  OrderManagement,
+  Integrations
+} from "../types/index.js";
 
 /**
  * Builds a comprehensive system prompt with all agent capabilities
- * @param {Object} profile - Profile configuration
- * @param {Object} customerService - Customer service configuration
- * @param {Object} aiCapabilities - AI capabilities configuration
- * @param {Object} socialMedia - Social media configuration
- * @param {Object} orderManagement - Order management configuration
- * @param {Object} integrations - Integrations configuration
- * @returns {string} The system prompt
+ * @param profile - Profile configuration
+ * @param customerService - Customer service configuration
+ * @param aiCapabilities - AI capabilities configuration
+ * @param socialMedia - Social media configuration
+ * @param orderManagement - Order management configuration
+ * @param integrations - Integrations configuration
+ * @returns The system prompt
  */
 function buildSystemPrompt(
-  profile,
-  customerService,
-  aiCapabilities,
-  socialMedia,
-  orderManagement,
-  integrations
-) {
+  profile: Profile,
+  customerService?: CustomerService,
+  aiCapabilities?: AICapabilities,
+  socialMedia?: SocialMedia,
+  orderManagement?: OrderManagement,
+  integrations?: Integrations
+): string {
   const profileName = profile.name;
   const role = profile.role || "customer service assistant";
 
@@ -44,7 +55,7 @@ function buildSystemPrompt(
 
   // Add AI capabilities
   if (aiCapabilities) {
-    const capabilities = [];
+    const capabilities: string[] = [];
     if (aiCapabilities.customerInquiries)
       capabilities.push("customer inquiries");
     if (aiCapabilities.orderTracking)
@@ -89,7 +100,7 @@ function buildSystemPrompt(
   // Add order management capabilities
   if (orderManagement) {
     if (orderManagement.trackingEnabled) {
-      prompt += ` You can track orders and provide delivery updates.`;
+      prompt += ` You can track orders and provide delivery updates. When customers ask about their order status, you can look up their order information using their order number and provide detailed status updates including tracking information, delivery dates, and order details.`;
     }
     if (
       orderManagement.deliveryPartners &&
@@ -113,7 +124,7 @@ function buildSystemPrompt(
   if (integrations) {
     if (
       integrations.payment?.enabled &&
-      integrations.payment.gateways?.length > 0
+      integrations.payment.gateways?.length && integrations.payment.gateways.length > 0
     ) {
       prompt += ` Payment gateways available: ${integrations.payment.gateways.join(
         ", "
@@ -121,7 +132,7 @@ function buildSystemPrompt(
     }
     if (
       integrations.delivery?.enabled &&
-      integrations.delivery.services?.length > 0
+      integrations.delivery.services?.length && integrations.delivery.services.length > 0
     ) {
       prompt += ` Delivery services: ${integrations.delivery.services.join(
         ", "
@@ -136,11 +147,11 @@ function buildSystemPrompt(
 
 /**
  * Creates a dynamic character configuration for a vendor
- * @param {string} vendorId - The vendor identifier
- * @param {Object} agentConfig - The agent configuration object
- * @returns {Object} The character configuration matching ElizaOS format
+ * @param vendorId - The vendor identifier
+ * @param agentConfig - The agent configuration object
+ * @returns The character configuration matching ElizaOS format
  */
-function createDynamicCharacter(vendorId, agentConfig) {
+export function createDynamicCharacter(vendorId: string, agentConfig: AgentConfig): VocaCharacter {
   const {
     profile,
     customerService,
@@ -149,6 +160,7 @@ function createDynamicCharacter(vendorId, agentConfig) {
     orderManagement,
     integrations,
   } = agentConfig;
+  
   // Build comprehensive system prompt with all capabilities
   const systemPrompt = buildSystemPrompt(
     profile,
@@ -159,20 +171,9 @@ function createDynamicCharacter(vendorId, agentConfig) {
     integrations
   );
 
-  const character = {
+  const character: VocaCharacter = {
+    // Required ElizaOS Character properties
     name: profile.name,
-    clients: ["twitter"],
-    modelProvider: "google-genai",
-    system: systemPrompt,
-    settings: {
-      secrets: {
-        GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-      },
-      voice: {
-        model: "en_US-female-medium",
-      },
-    },
-    plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-google-genai", "@elizaos/plugin-bootstrap"],
     bio: [
       profile.bio ||
         profile.description ||
@@ -190,43 +191,47 @@ function createDynamicCharacter(vendorId, agentConfig) {
       orderManagement?.trackingEnabled
         ? `I can help track your orders and provide delivery updates.`
         : null,
-    ].filter(Boolean),
-    lore: [
-      `I work for ${profile.name} and specialize in customer service.`,
-      `I have access to product information and can help with orders.`,
-      `I'm trained to be helpful, friendly, and professional.`,
-      `I can assist with ${
-        aiCapabilities?.customerInquiries
-          ? "customer inquiries"
-          : "basic questions"
-      }.`,
-      aiCapabilities?.orderTracking
-        ? `I can help track orders and provide delivery updates.`
-        : null,
-      aiCapabilities?.productRecommendations
-        ? `I can recommend products based on your needs.`
-        : null,
-      aiCapabilities?.socialMediaEngagement
-        ? `I can engage with customers on social media platforms.`
-        : null,
-      customerService?.hours ? `I'm available ${customerService.hours}.` : null,
-      customerService?.responseTime
-        ? `I typically respond within ${customerService.responseTime} minutes.`
-        : null,
-      customerService?.languages
-        ? `I can communicate in ${customerService.languages.join(", ")}.`
-        : null,
-      orderManagement?.deliveryPartners
-        ? `I work with delivery partners: ${orderManagement.deliveryPartners.join(
-            ", "
-          )}.`
-        : null,
-      integrations?.payment?.enabled
-        ? `I can help with payment processing using ${
-            integrations.payment.gateways?.join(", ") || "our payment systems"
-          }.`
-        : null,
-    ].filter(Boolean),
+    ].filter(Boolean) as string[],
+    
+    // Optional ElizaOS Character properties
+    username: profile.name.toLowerCase().replace(/\s+/g, '_'),
+    system: systemPrompt,
+    adjectives: [
+      "HELPFUL",
+      "FRIENDLY",
+      "PROFESSIONAL",
+      "KNOWLEDGEABLE",
+      "RESPONSIVE",
+      "CARE",
+      "SUPPORTIVE",
+      "EFFICIENT",
+      "RELIABLE",
+      "EXPERIENCED",
+    ],
+    topics: [
+      "customer service",
+      "product information",
+      "order assistance",
+      "shipping and delivery",
+      "returns and refunds",
+      "general inquiries",
+      ...(aiCapabilities?.orderTracking
+        ? ["order tracking", "delivery updates"]
+        : []),
+      ...(aiCapabilities?.productRecommendations
+        ? ["product recommendations", "shopping assistance"]
+        : []),
+      ...(aiCapabilities?.socialMediaEngagement
+        ? ["social media", "content creation"]
+        : []),
+      ...(integrations?.payment?.enabled
+        ? ["payment processing", "billing"]
+        : []),
+      ...(orderManagement?.trackingEnabled
+        ? ["order status", "tracking information"]
+        : []),
+      ...(socialMedia?.contentTypes ? socialMedia.contentTypes : []),
+    ],
     knowledge: [
       `I know about ${profile.name}'s products and services.`,
       `I understand customer service best practices.`,
@@ -269,17 +274,17 @@ function createDynamicCharacter(vendorId, agentConfig) {
             ", "
           )}.`
         : null,
-    ].filter(Boolean),
+    ].filter(Boolean) as string[],
     messageExamples: [
       [
         {
-          user: "{{user1}}",
+          name: "{{user}}",
           content: {
             text: "Hello, I need help with my order",
           },
         },
         {
-          user: profile.name,
+          name: profile.name,
           content: {
             text: `Hello! I'm ${profile.name}, your AI assistant. I'd be happy to help you with your order. Could you please provide your order number or tell me more about what you need assistance with?`,
           },
@@ -287,13 +292,13 @@ function createDynamicCharacter(vendorId, agentConfig) {
       ],
       [
         {
-          user: "{{user1}}",
+          name: "{{user}}",
           content: {
             text: "What products do you have?",
           },
         },
         {
-          user: profile.name,
+          name: profile.name,
           content: {
             text: "I'd be happy to help you find the perfect products! Could you tell me what you're looking for or what category interests you?",
           },
@@ -301,13 +306,13 @@ function createDynamicCharacter(vendorId, agentConfig) {
       ],
       [
         {
-          user: "{{user1}}",
+          name: "{{user}}",
           content: {
             text: "Can you track my order?",
           },
         },
         {
-          user: profile.name,
+          name: profile.name,
           content: {
             text: `Absolutely! I can help you track your order. ${
               orderManagement?.trackingEnabled
@@ -331,31 +336,7 @@ function createDynamicCharacter(vendorId, agentConfig) {
       orderManagement?.trackingEnabled
         ? `Track your orders easily with our automated system!`
         : null,
-    ].filter(Boolean),
-    topics: [
-      "customer service",
-      "product information",
-      "order assistance",
-      "shipping and delivery",
-      "returns and refunds",
-      "general inquiries",
-      ...(aiCapabilities?.orderTracking
-        ? ["order tracking", "delivery updates"]
-        : []),
-      ...(aiCapabilities?.productRecommendations
-        ? ["product recommendations", "shopping assistance"]
-        : []),
-      ...(aiCapabilities?.socialMediaEngagement
-        ? ["social media", "content creation"]
-        : []),
-      ...(integrations?.payment?.enabled
-        ? ["payment processing", "billing"]
-        : []),
-      ...(orderManagement?.trackingEnabled
-        ? ["order status", "tracking information"]
-        : []),
-      ...(socialMedia?.contentTypes ? socialMedia.contentTypes : []),
-    ],
+    ].filter(Boolean) as string[],
     style: {
       all: [
         "friendly and professional tone",
@@ -379,26 +360,67 @@ function createDynamicCharacter(vendorId, agentConfig) {
         "emphasizes helpfulness",
       ],
     },
-    adjectives: [
-      "HELPFUL",
-      "FRIENDLY",
-      "PROFESSIONAL",
-      "KNOWLEDGEABLE",
-      "RESPONSIVE",
-      "CARE",
-      "SUPPORTIVE",
-      "EFFICIENT",
-      "RELIABLE",
-      "EXPERIENCED",
-    ],
+    plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-google-genai", "@elizaos/plugin-bootstrap", "OrderStatusPlugin"],
+    settings: {
+      secrets: {
+        GOOGLE_GENERATIVE_AI_API_KEY: process.env["GOOGLE_GENERATIVE_AI_API_KEY"] || '',
+      },
+      avatar: `https://elizaos.github.io/eliza-avatars/${profile.name.toLowerCase().replace(/\s+/g, '-')}.png`,
+      model: "gemini-1.5-pro",
+      temperature: 0.7,
+      maxTokens: 2000,
+      memoryLimit: 1000,
+      conversationLength: 32
+    },
+    
+    // VocaOS-specific properties
+    clients: ["twitter"],
+    modelProvider: "google-genai",
+    lore: [
+      `I work for ${profile.name} and specialize in customer service.`,
+      `I have access to product information and can help with orders.`,
+      `I'm trained to be helpful, friendly, and professional.`,
+      `I can assist with ${
+        aiCapabilities?.customerInquiries
+          ? "customer inquiries"
+          : "basic questions"
+      }.`,
+      aiCapabilities?.orderTracking
+        ? `I can help track orders and provide delivery updates.`
+        : null,
+      aiCapabilities?.productRecommendations
+        ? `I can recommend products based on your needs.`
+        : null,
+      aiCapabilities?.socialMediaEngagement
+        ? `I can engage with customers on social media platforms.`
+        : null,
+      customerService?.hours ? `I'm available ${customerService.hours}.` : null,
+      customerService?.responseTime
+        ? `I typically respond within ${customerService.responseTime} minutes.`
+        : null,
+      customerService?.languages
+        ? `I can communicate in ${customerService.languages.join(", ")}.`
+        : null,
+      orderManagement?.deliveryPartners
+        ? `I work with delivery partners: ${orderManagement.deliveryPartners.join(
+            ", "
+          )}.`
+        : null,
+      integrations?.payment?.enabled
+        ? `I can help with payment processing using ${
+            integrations.payment.gateways?.join(", ") || "our payment systems"
+          }.`
+        : null,
+    ].filter(Boolean) as string[],
+    
     // Store the complete configuration for reference
     configuration: {
       profile,
-      customerService,
-      aiCapabilities,
-      socialMedia,
-      orderManagement,
-      integrations,
+      ...(customerService && { customerService }),
+      ...(aiCapabilities && { aiCapabilities }),
+      ...(socialMedia && { socialMedia }),
+      ...(orderManagement && { orderManagement }),
+      ...(integrations && { integrations }),
     },
   };
 
@@ -412,5 +434,3 @@ function createDynamicCharacter(vendorId, agentConfig) {
 
   return character;
 }
-
-export { createDynamicCharacter };

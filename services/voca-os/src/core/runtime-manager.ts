@@ -3,7 +3,9 @@ import {
   EventType, 
   createMessageMemory, 
   stringToUuid,
-  ChannelType
+  ChannelType,
+  IAgentRuntime,
+  MessageMemory
 } from "@elizaos/core";
 import bootstrapPlugin from '@elizaos/plugin-bootstrap';
 import googleGenaiPlugin from '@elizaos/plugin-google-genai';
@@ -13,10 +15,28 @@ import { cache } from "../services/cache.js";
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
+import {
+  AgentConfig,
+  AgentRuntimeInfo,
+  VocaCharacter,
+  DatabaseConfig,
+  RuntimeMetrics,
+  VendorDetails,
+  PluginSchema,
+  VocaOSError
+} from "../types/index.js";
 
 // Constants
-const DEFAULT_PLUGINS = ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@elizaos/plugin-google-genai"];
-const VECTOR_ERROR_PATTERNS = [
+const DEFAULT_PLUGINS: string[] = [
+  "@elizaos/plugin-sql", 
+  "@elizaos/plugin-bootstrap", 
+  "@elizaos/plugin-google-genai",
+  "@elizaos/plugin-openai",
+  "@elizaos/plugin-anthropic",
+  "@elizaos/plugin-gemini",
+];
+
+const VECTOR_ERROR_PATTERNS: string[] = [
   'type "vector" does not exist',
   'extension "vector" is not available',
   'Failed to create table embeddings'
@@ -26,16 +46,17 @@ const VECTOR_ERROR_PATTERNS = [
  * Embedded ElizaOS Manager for Multi-Agent Support
  * Each vendor gets their own agent within the same process
  */
-class EmbeddedElizaOSManager {
+export class EmbeddedElizaOSManager {
+  private isInitialized: boolean = true;
+
   constructor() {
-    this.isInitialized = true;
     this.initializeMetrics();
   }
 
   /**
    * Initialize runtime metrics in cache
    */
-  initializeMetrics() {
+  private initializeMetrics(): void {
     cache.setRuntimeMetrics('global', {
       totalAgents: 0,
       messageCount: 0,
@@ -44,11 +65,10 @@ class EmbeddedElizaOSManager {
     });
   }
 
-
   /**
    * Get database adapter configuration
    */
-  getDatabaseConfig() {
+  private getDatabaseConfig(): DatabaseConfig {
     const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
     
     if (postgresUrl) {
@@ -65,7 +85,7 @@ class EmbeddedElizaOSManager {
   /**
    * Create and initialize database adapter
    */
-  async createDatabaseAdapter(agentId) {
+  private async createDatabaseAdapter(agentId: string): Promise<any> {
     if (!createDatabaseAdapter) {
       throw new Error("createDatabaseAdapter not found in plugin-sql");
     }
@@ -83,7 +103,7 @@ class EmbeddedElizaOSManager {
   /**
    * Check if error is related to vector extension
    */
-  isVectorError(error) {
+  private isVectorError(error: Error): boolean {
     return VECTOR_ERROR_PATTERNS.some(pattern => 
       error.message && error.message.includes(pattern)
     );
@@ -92,7 +112,7 @@ class EmbeddedElizaOSManager {
   /**
    * Register plugin schemas for migration
    */
-  registerPluginSchemas(migrationService, plugins) {
+  private registerPluginSchemas(migrationService: DatabaseMigrationService, plugins: any[]): void {
     // Register core SQL schema with embeddings (PostgreSQL with pgvector support)
     if (sqlPlugin.schema) {
       migrationService.registerSchema('@elizaos/plugin-sql', sqlPlugin.schema);
@@ -110,7 +130,7 @@ class EmbeddedElizaOSManager {
   /**
    * Register custom plugin schemas explicitly
    */
-  registerCustomPluginSchemas(migrationService, plugins) {
+  private registerCustomPluginSchemas(migrationService: DatabaseMigrationService, plugins: any[]): void {
     plugins.forEach(plugin => {
       // Handle plugin instances (objects with schema property)
       if (typeof plugin === 'object' && plugin !== null) {
@@ -137,7 +157,7 @@ class EmbeddedElizaOSManager {
   /**
    * Run database migrations
    */
-  async runMigrations(adapter, agentId, plugins = []) {
+  private async runMigrations(adapter: any, agentId: string, plugins: any[] = []): Promise<void> {
     try {
       console.log(`Running migrations for agent ${agentId}...`);
       
@@ -148,7 +168,7 @@ class EmbeddedElizaOSManager {
       
       try {
         await migrationService.runAllPluginMigrations();
-      } catch (migrationError) {
+      } catch (migrationError: any) {
         if (this.isVectorError(migrationError)) {
           console.warn(`Vector extension not available, continuing without embeddings table for agent ${agentId}`);
         } else {
@@ -156,7 +176,7 @@ class EmbeddedElizaOSManager {
           throw migrationError;
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error running migrations for agent ${agentId}:`, error);
       throw error;
     }
@@ -165,21 +185,21 @@ class EmbeddedElizaOSManager {
   /**
    * Check if plugin is already included
    */
-  isPluginIncluded(plugins, pluginName) {
+  private isPluginIncluded(plugins: any[], pluginName: string): boolean {
     return plugins.find(p => 
       (typeof p === "string" && p === pluginName) ||
       (typeof p === "object" && (p.name === pluginName || p.constructor?.name === pluginName))
-    );
+    ) !== undefined;
   }
 
   /**
    * Ensure required plugins are included
    */
-  ensureRequiredPlugins(plugins) {
+  private ensureRequiredPlugins(plugins: any[]): any[] {
     const requiredPlugins = [...DEFAULT_PLUGINS];
     
     // Add Google GenAI plugin if API key is available
-    if (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) {
+    if (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() && !this.isPluginIncluded(plugins, "@elizaos/plugin-google-genai")) {
       requiredPlugins.push("@elizaos/plugin-google-genai");
     }
     
@@ -196,7 +216,7 @@ class EmbeddedElizaOSManager {
   /**
    * Update agent count in metrics
    */
-  updateAgentCount(delta = 1) {
+  private updateAgentCount(delta: number = 1): void {
     const metrics = cache.getRuntimeMetrics('global');
     metrics.totalAgents += delta;
     cache.setRuntimeMetrics('global', metrics);
@@ -205,7 +225,11 @@ class EmbeddedElizaOSManager {
   /**
    * Create a vendor-specific ElizaOS agent
    */
-  async createAgent(vendorId, agentConfig) {
+  async createAgent(vendorId: string, agentConfig: AgentConfig): Promise<{
+    agentRuntime: AgentRuntime;
+    character: VocaCharacter;
+    agentId: string;
+  }> {
     try {
       const characterConfig = createDynamicCharacter(vendorId, agentConfig);
       const { configuration, ...runtimeCharacter } = characterConfig;
@@ -213,10 +237,16 @@ class EmbeddedElizaOSManager {
       const plugins = this.ensureRequiredPlugins(runtimeCharacter.plugins || []);
       const runtimeCharacterWithPlugins = { ...runtimeCharacter, plugins };
 
-      console.log('Final plugins for agent:', plugins);
-      console.log('Bootstrap plugin included:', plugins.includes('@elizaos/plugin-bootstrap'));
-
-      const runtime = new AgentRuntime({ character: runtimeCharacterWithPlugins, plugins: [sqlPlugin, bootstrapPlugin, googleGenaiPlugin], });
+      const runtime = new AgentRuntime(
+        { 
+          character: runtimeCharacterWithPlugins, 
+          plugins: [sqlPlugin, bootstrapPlugin, googleGenaiPlugin], 
+          settings: {
+            OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+            ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+            GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+          },
+        });
       const adapter = await this.createDatabaseAdapter(runtime.agentId);
       
       runtime.adapter = adapter;
@@ -233,7 +263,7 @@ class EmbeddedElizaOSManager {
         character: characterConfig,
         agentId: runtime.agentId,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error creating ElizaOS agent for vendor ${vendorId}:`, error);
       throw error;
     }
@@ -242,7 +272,11 @@ class EmbeddedElizaOSManager {
   /**
    * Setup connection for message processing
    */
-  async setupConnection(runtime, vendorId, platform, userId) {
+  async setupConnection(runtime: AgentRuntime, vendorId: string, platform: string, userId: string): Promise<{
+    worldId: string;
+    roomId: string;
+    entityUserId: string;
+  }> {
     const worldId = stringToUuid(`${vendorId}-world`);
     const roomId = stringToUuid(`${vendorId}-${platform}`);
     const entityUserId = stringToUuid(userId);
@@ -258,7 +292,7 @@ class EmbeddedElizaOSManager {
         serverId: `${vendorId}-server`,
         type: ChannelType.DM,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.log('Connection already exists or failed to create, continuing with message processing:', error.message);
     }
     
@@ -268,7 +302,7 @@ class EmbeddedElizaOSManager {
   /**
    * Create message memory for ElizaOS
    */
-  createMessageMemory(userMessage, platform, entityUserId, roomId) {
+  private createMessageMemory(userMessage: string, platform: string, entityUserId: string, roomId: string): MessageMemory {
     const messageMemory = createMessageMemory({
       id: uuidv4(),
       entityId: entityUserId,
@@ -293,8 +327,7 @@ class EmbeddedElizaOSManager {
   /**
    * Process ElizaOS callback and extract response
    */
-  processElizaOSCallback(content) {
-
+  private processElizaOSCallback(content: any): string {
     let responseText = '';
     if (content?.text) {
       console.log('✅ Found text response:', content.text);
@@ -314,7 +347,7 @@ class EmbeddedElizaOSManager {
   /**
    * Update message processing metrics
    */
-  updateMessageMetrics(processingTime, isError = false) {
+  private updateMessageMetrics(processingTime: number, isError: boolean = false): void {
     const metrics = cache.getRuntimeMetrics('global');
     
     if (isError) {
@@ -331,7 +364,19 @@ class EmbeddedElizaOSManager {
   /**
    * Process message through the appropriate agent
    */
-  async processMessage(vendorId, userMessage, platform = "whatsapp", userId = "user") {
+  async processMessage(vendorId: string, userMessage: string, platform: string = "whatsapp", userId: string = "user"): Promise<{
+    success: boolean;
+    reply?: string;
+    vendorId: string;
+    platform: string;
+    userId: string;
+    agentId: string;
+    timestamp: string;
+    processing_time: number;
+    mode: string;
+    elizaos_response?: any;
+    error?: string;
+  }> {
     const startTime = Date.now();
 
     try {
@@ -347,17 +392,13 @@ class EmbeddedElizaOSManager {
 
       // Process message using ElizaOS event-based system (following standalone guide)
       let responseText = '';
-      
-      console.log('Processing message with ElizaOS runtime using emitEvent...');
-      
+            
       try {
-        // First, try the event-based approach with bootstrap plugin
-        console.log('About to emit MESSAGE_RECEIVED event...');
         
         await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
           runtime: runtime,
           message,
-          callback: async (content) => {
+          callback: async (content: any) => {
             if (content?.text) {
               console.log(`${cache.getCharacterConfig(vendorId)?.name || 'Agent'}:`, content.text);
               responseText = content.text;
@@ -378,7 +419,7 @@ class EmbeddedElizaOSManager {
           responseText = "I received your message but couldn't generate a response.";
         }
         
-      } catch (processingError) {
+      } catch (processingError: any) {
         console.error('ElizaOS message processing failed:', processingError);
         responseText = "I received your message but encountered an error processing it.";
       }
@@ -402,7 +443,7 @@ class EmbeddedElizaOSManager {
           modelProvider: cache.getCharacterConfig(vendorId)?.settings?.modelProvider || "openai",
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       const processingTime = Date.now() - startTime;
       this.updateMessageMetrics(processingTime, true);
       console.error(`Error processing message for vendor ${vendorId}:`, error);
@@ -423,7 +464,14 @@ class EmbeddedElizaOSManager {
   /**
    * Check if vendor already has an agent
    */
-  getExistingVendorInfo(vendorId, agentConfig) {
+  private getExistingVendorInfo(vendorId: string, agentConfig: AgentConfig): {
+    vendor_id: string;
+    agent_id: string;
+    status: string;
+    config: AgentConfig;
+    registered_at: string;
+    mode: string;
+  } | null {
     const existingAgent = cache.getAgentRuntime(vendorId);
     if (!existingAgent) return null;
 
@@ -443,7 +491,14 @@ class EmbeddedElizaOSManager {
   /**
    * Register a vendor with an embedded agent
    */
-  async registerVendor(vendorId, agentConfig) {
+  async registerVendor(vendorId: string, agentConfig: AgentConfig): Promise<{
+    vendor_id: string;
+    agent_id: string;
+    status: string;
+    config: AgentConfig;
+    registered_at: string;
+    mode: string;
+  }> {
     try {
       console.log(`Registering vendor ${vendorId} with embedded ElizaOS agent`);
 
@@ -462,7 +517,7 @@ class EmbeddedElizaOSManager {
         registered_at: new Date().toISOString(),
         mode: "embedded",
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error registering vendor ${vendorId}:`, error);
       throw error;
     }
@@ -471,7 +526,18 @@ class EmbeddedElizaOSManager {
   /**
    * Get agent status
    */
-  getAgentStatus(vendorId) {
+  getAgentStatus(vendorId: string): {
+    vendorId: string;
+    agentId: string;
+    character: string;
+    isActive: boolean;
+    plugins: string[];
+    settings: any;
+    modelProvider: string;
+    database: any;
+    createdAt: string;
+    mode: string;
+  } | null {
     const agent = cache.getAgentRuntime(vendorId);
     const character = cache.getCharacterConfig(vendorId);
 
@@ -494,17 +560,57 @@ class EmbeddedElizaOSManager {
   /**
    * Get all agents status
    */
-  getAllAgentsStatus() {
+  getAllAgentsStatus(): Array<{
+    vendorId: string;
+    agentId: string;
+    character: string;
+    isActive: boolean;
+    plugins: string[];
+    settings: any;
+    modelProvider: string;
+    database: any;
+    createdAt: string;
+    mode: string;
+  }> {
     const agentRuntimes = cache.getAllAgentRuntimes();
     return Array.from(agentRuntimes.keys())
       .map(vendorId => this.getAgentStatus(vendorId))
-      .filter(Boolean);
+      .filter(Boolean) as Array<{
+        vendorId: string;
+        agentId: string;
+        character: string;
+        isActive: boolean;
+        plugins: string[];
+        settings: any;
+        modelProvider: string;
+        database: any;
+        createdAt: string;
+        mode: string;
+      }>;
   }
 
   /**
    * Get system status and metrics
    */
-  getStatus() {
+  getStatus(): {
+    isInitialized: boolean;
+    mode: string;
+    metrics: RuntimeMetrics;
+    agents: Array<{
+      vendorId: string;
+      agentId: string;
+      character: string;
+      isActive: boolean;
+      plugins: string[];
+      settings: any;
+      modelProvider: string;
+      database: any;
+      createdAt: string;
+      mode: string;
+    }>;
+    totalAgents: number;
+    availableVendors: string[];
+  } {
     const metrics = cache.getRuntimeMetrics('global');
     const agentRuntimes = cache.getAllAgentRuntimes();
     
@@ -521,7 +627,7 @@ class EmbeddedElizaOSManager {
   /**
    * Shutdown all agents
    */
-  async shutdown() {
+  async shutdown(): Promise<void> {
     console.log("Shutting down all embedded ElizaOS agents...");
 
     const agentRuntimes = cache.getAllAgentRuntimes();
@@ -531,7 +637,7 @@ class EmbeddedElizaOSManager {
       try {
         await agent.runtime.shutdown();
         console.log(`Agent for vendor ${vendorId} shut down successfully`);
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Error shutting down agent for vendor ${vendorId}:`, error);
       }
     }
@@ -543,5 +649,3 @@ class EmbeddedElizaOSManager {
     console.log("All embedded ElizaOS agents shut down");
   }
 }
-
-export { EmbeddedElizaOSManager };
