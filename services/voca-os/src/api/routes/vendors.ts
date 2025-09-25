@@ -97,9 +97,9 @@ export function createVendorRoutes(vocaAiEngineUrl: string, poolManager: PoolMan
    */
   router.delete('/:vendorId', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { vendorId } = req.params;
+      const { vendorId  } = req.params;
       
-      const result = await poolManager.removeVendor(vendorId);
+      const result = await poolManager.removeVendor(vendorId as string);
       
       if (result.success) {
         res.json({

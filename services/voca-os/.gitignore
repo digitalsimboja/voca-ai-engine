@@ -98,9 +98,9 @@ pids
 *.pid.lock
 
 # Character files (will be stored in S3 in production)
-characters/dynamic/*.json
-characters/dynamic/*.txt
-characters/dynamic/*.md
+characters/dynamic/
+characters/dynamic/*
+!characters/dynamic/.gitkeep
 
 # ElizaOS specific
 agent/data/

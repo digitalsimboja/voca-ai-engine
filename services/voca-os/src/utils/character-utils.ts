@@ -3,7 +3,6 @@
  */
 import path from "path";
 import fs from "fs";
-import { Character } from '@elizaos/core';
 import {
   AgentConfig,
   VocaCharacter,
@@ -360,7 +359,7 @@ export function createDynamicCharacter(vendorId: string, agentConfig: AgentConfi
         "emphasizes helpfulness",
       ],
     },
-    plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-google-genai", "@elizaos/plugin-bootstrap", "OrderStatusPlugin"],
+    plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-google-genai", "@elizaos/plugin-bootstrap"],
     settings: {
       secrets: {
         GOOGLE_GENERATIVE_AI_API_KEY: process.env["GOOGLE_GENERATIVE_AI_API_KEY"] || '',
@@ -424,7 +423,7 @@ export function createDynamicCharacter(vendorId: string, agentConfig: AgentConfi
     },
   };
 
-  // write character to disk
+  // write character to disk for now, later we will use s3 bucket for storage
   const dynamicDir = path.join(process.cwd(), "characters", "dynamic");
   if (!fs.existsSync(dynamicDir)) {
     fs.mkdirSync(dynamicDir, { recursive: true });

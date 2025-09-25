@@ -25,6 +25,7 @@ RUN bun install
 # Copy source after installing deps
 COPY services/voca-os/voca-os-service.ts ./voca-os-service.ts
 COPY services/voca-os/src ./src
+COPY services/voca-os/plugins ./plugins
 COPY services/voca-os/characters ./characters
 
 # Build TypeScript
@@ -47,14 +48,16 @@ RUN apt-get update && \
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/plugins ./plugins
 COPY --from=builder /app/characters ./characters
 COPY --from=builder /app/package.json ./package.json
 
 # Install only production dependencies
 RUN bun install --production
 
-# Ensure dynamic characters dir
+# Ensure dynamic characters dir and eliza data dir
 RUN mkdir -p /app/characters/dynamic
+RUN mkdir -p /app/.eliza/.elizadb
 
 EXPOSE 5001
 ENV NODE_ENV=production

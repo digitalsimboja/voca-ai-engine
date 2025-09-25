@@ -57,12 +57,12 @@ app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application on startup."""
-    logger.info("🚀 Starting Voca AI Engine...")
+    logger.info("Starting Voca AI Engine...")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on application shutdown."""
-    logger.info("🛑 Shutting down Voca AI Engine...")
+    logger.info("Shutting down Voca AI Engine...")
 
 @app.get("/")
 async def root():

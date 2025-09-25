@@ -34,9 +34,9 @@ class Database:
                     'jit': 'off'
                 }
             )
-            logger.info("✅ Database connection pool created")
+            logger.info("Database connection pool created")
         except Exception as e:
-            logger.error(f"❌ Failed to create database pool: {e}")
+            logger.error(f"Failed to create database pool: {e}")
             raise
     
     async def disconnect(self) -> None:

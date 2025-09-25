@@ -1,3 +1,4 @@
+import { IAgentRuntime, type UUID } from "@elizaos/core";
 import {
   AgentRuntimeInfo,
   VocaCharacter,
@@ -28,8 +29,8 @@ class Cache {
   /**
    * Get agent runtime for a vendor
    */
-  getAgentRuntime(vendorId: string): AgentRuntimeInfo | null {
-    return this.agentRuntimes.get(vendorId) || null;
+  getAgentRuntime(vendorId: string): { id: UUID; runtime: IAgentRuntime } | null {
+    return this.agentRuntimes.get(vendorId) as { id: UUID; runtime: IAgentRuntime } | null;
   }
 
   /**

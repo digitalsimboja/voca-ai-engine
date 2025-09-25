@@ -20,12 +20,12 @@ export function setupRoutes(app: Application, urlPrefix: string, vocaAiEngineUrl
   // Initialize pool manager asynchronously
   poolManager.initialize().then((success) => {
     if (success) {
-      console.log('✅ Pool Manager initialized successfully');
+      console.log('Pool Manager initialized successfully');
     } else {
-      console.error('❌ Failed to initialize Pool Manager');
+      console.error('Failed to initialize Pool Manager');
     }
   }).catch((error) => {
-    console.error('❌ Error initializing Pool Manager:', error);
+    console.error('Error initializing Pool Manager:', error);
   });
 
   // Health check routes
@@ -72,5 +72,5 @@ export function setupRoutes(app: Application, urlPrefix: string, vocaAiEngineUrl
     });
   });
 
-  console.log('✅ All API routes configured successfully');
+  console.log('All API routes configured successfully');
 }

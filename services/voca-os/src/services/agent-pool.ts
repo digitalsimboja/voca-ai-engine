@@ -63,14 +63,14 @@ export class AgentPool {
     }
     
     const elizaosResult = await this.elizaosManager.registerVendor(vendorId, agentConfig);
-    const { vendor_id, config, agent_id, registeredAt } = elizaosResult;
+    const { vendor_id, config, agent_id, registered_at } = elizaosResult;
     
     // Store vendor details in cache
     const vendorData = {
       vendorId,
       agentConfig: config,
       agentId: agent_id,
-      registeredAt: registeredAt
+      registeredAt: registered_at
     };
     cache.setVendorDetails(vendorId, vendorData);
     
@@ -120,7 +120,7 @@ export class AgentPool {
         platform,
         user_id: userId,
         message: message,
-        response: elizaosResponse.response || elizaosResponse.reply || "No response generated",
+        response: elizaosResponse.reply || "No response generated",
         timestamp: elizaosResponse.timestamp,
         character: characterConfig?.name || vendorId,
         mode: elizaosResponse.mode,
@@ -187,10 +187,10 @@ export class AgentPool {
     return {
       poolId: this.poolId,
       isInitialized: this.isInitialized,
-      vendorCount: cache.getVendorCountForPool(this.poolId),
       maxVendors: this.maxVendors,
       elizaosManager: this.elizaosManager.getStatus(),
-      ...metrics
+      ...metrics,
+      vendorCount: cache.getVendorCountForPool(this.poolId)
     };
   }
 

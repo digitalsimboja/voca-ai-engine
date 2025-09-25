@@ -4,7 +4,6 @@ import {
   AgentConfig,
   MessageResponse,
   VendorRegistrationResponse,
-  PoolMetrics
 } from '../types/index.js';
 
 /**

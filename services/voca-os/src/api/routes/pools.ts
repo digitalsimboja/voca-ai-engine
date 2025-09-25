@@ -50,7 +50,7 @@ export function createPoolRoutes(poolManager: PoolManager): Router {
   router.get('/:poolId', async (req: Request, res: Response): Promise<void> => {
     try {
       const { poolId } = req.params;
-      const pool = poolManager.getPool(poolId);
+      const pool = poolManager.getPool(poolId as string);
       
       if (!pool) {
         res.status(404).json({
