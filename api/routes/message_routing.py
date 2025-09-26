@@ -318,7 +318,7 @@ async def _lookup_agent_by_user(user_id: str, platform: str, metadata: Optional[
                                     "character": latest_runtime.get("character", "Unknown")
                                 }
         except Exception as e:
-            logger.error("Error looking up agent by user", error=str(e))
+            logger.error("Error looking up agent by user", error_message=str(e))
     
     return None
 
@@ -392,7 +392,7 @@ async def _route_to_vocaos(agent_info: Dict[str, Any], request: IncomingMessage)
     except Exception as e:
         logger.error("Error routing message to VocaOS", 
                    agent_id=agent_info["agent_id"],
-                   error=str(e))
+                   error_message=str(e))
         raise HTTPException(
             status_code=502,
             detail={

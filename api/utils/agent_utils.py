@@ -177,7 +177,7 @@ async def provision_vocaos_agent(
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{voca_os_url}/voca-os/api/v1/vendors",
+                f"{voca_os_url}/voca-os/api/v1/vendors/register",
                 json={
                     "vendor_id": f"vendor-{vendor_identifier}",
                     "agent_config": agent_config
@@ -185,9 +185,9 @@ async def provision_vocaos_agent(
                 timeout=30.0
             )
             
-            if response.status_code == 200:
+            if response.status_code in [200, 201]:
                 voca_os_response = response.json()
-                agent_id = voca_os_response['vendor']['agent_id']
+                agent_id = voca_os_response['data']['agent_id']
                 
                 result = {
                     "status": "success",
@@ -223,7 +223,7 @@ async def provision_vocaos_agent(
             "message": f"Error provisioning VocaOS agent: {str(e)}"
         }
         
-        logger.error("Error provisioning VocaOS agent", error=str(e))
+        logger.error("Error provisioning VocaOS agent", error_message=str(e))
         return result
 
 

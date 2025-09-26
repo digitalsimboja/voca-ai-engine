@@ -298,7 +298,7 @@ async def _process_whatsapp_message(vendor_id: str, message: Dict[str, Any], con
         logger.error("Error processing WhatsApp message", 
                    vendor_id=vendor_id,
                    message_id=message.get("id"),
-                   error=str(e))
+                   error_message=str(e))
         return None
 
 
@@ -349,7 +349,7 @@ async def _process_instagram_message(vendor_id: str, message: Dict[str, Any], co
         logger.error("Error processing Instagram message", 
                    vendor_id=vendor_id,
                    message_id=message.get("id"),
-                   error=str(e))
+                   error_message=str(e))
         return None
 
 
@@ -400,5 +400,5 @@ async def _process_facebook_message(vendor_id: str, messaging: Dict[str, Any], e
         logger.error("Error processing Facebook message", 
                    vendor_id=vendor_id,
                    sender_id=messaging.get("sender", {}).get("id"),
-                   error=str(e))
+                   error_message=str(e))
         return None

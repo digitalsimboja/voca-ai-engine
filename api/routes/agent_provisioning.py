@@ -385,7 +385,7 @@ async def _provision_agent(
                 provisioning_results["voca_os"] = create_provisioning_result(
                     "voca_os", "failed", f"Error provisioning VocaOS agent: {str(e)}"
                 )
-                logger.error("Error provisioning VocaOS agent", error=str(e))
+                logger.error("Error provisioning VocaOS agent", error_message=str(e))
         
         # Provision AWS Connect for voice/SMS channels
         if has_voice:
@@ -402,7 +402,7 @@ async def _provision_agent(
                 provisioning_results["voca_connect"] = create_provisioning_result(
                     "voca_connect", "failed", f"Error provisioning AWS Connect: {str(e)}"
                 )
-                logger.error("Error provisioning AWS Connect", error=str(e))
+                logger.error("Error provisioning AWS Connect", error_message=str(e))
         
         # Log final provisioning results
         logger.info("Direct provisioning completed", results=provisioning_results)
@@ -457,4 +457,4 @@ async def _notify(agent_id: str, vocaos_agent_id: str):
         logger.error("Error notifying vocaai-backend about VocaOS agent_id",
                    agent_id=agent_id,
                    vocaos_agent_id=vocaos_agent_id,
-                   error=str(e))
+                   error_message=str(e))

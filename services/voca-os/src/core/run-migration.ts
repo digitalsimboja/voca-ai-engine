@@ -2,7 +2,6 @@ import { type UUID, type Plugin, stringToUuid } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import fs from "fs";
-// Using dynamic imports to avoid TypeScript compilation issues
 
 /**
  * Database migration configuration
@@ -72,8 +71,7 @@ export async function runDatabaseMigrations(
     
     // Use the same approach as the runtime - let the migration service discover schemas
     console.log(`Total plugins received: ${plugins.length}`);
-    console.log(`Plugin names:`, plugins.map(p => p.name || 'unnamed'));
-    
+  
     // Force register the SQL plugin schema explicitly since it's the core one
     if ((sqlPlugin as any).schema) {
       console.log(`Registering SQL plugin schema explicitly`);
@@ -233,17 +231,6 @@ export async function runMigrations(adapter: any, agentId: string, plugins: any[
     
     const migrationService = new (sqlPlugin as any).DatabaseMigrationService();
     await migrationService.initializeWithDatabase(adapter.db);
-    
-    // Debug: Log all plugins to see their structure
-    console.log(`Total plugins received: ${plugins.length}`);
-    plugins.forEach((plugin, index) => {
-      console.log(`Plugin ${index}:`, {
-        name: plugin.name,
-        hasSchema: !!plugin.schema,
-        schemaKeys: plugin.schema ? Object.keys(plugin.schema) : 'no schema',
-        pluginKeys: Object.keys(plugin)
-      });
-    });
     
     registerPluginSchemas(migrationService, plugins, sqlPlugin);
     

@@ -80,7 +80,7 @@ async def detailed_health_check() -> Dict[str, Any]:
                 }
                 overall_healthy = False
     except Exception as e:
-        logger.warning("Voca OS health check failed", error=str(e), service="voca_os")
+        logger.warning("Voca OS health check failed", error_message=str(e), service="voca_os")
         health_status["dependencies"]["voca_os"] = {
             "status": "unhealthy",
             "url": settings.voca_os_url,
@@ -106,7 +106,7 @@ async def detailed_health_check() -> Dict[str, Any]:
                 }
                 overall_healthy = False
     except Exception as e:
-        logger.warning("Voca Connect health check failed", error=str(e), service="voca_connect")
+        logger.warning("Voca Connect health check failed", error_message=str(e), service="voca_connect")
         health_status["dependencies"]["voca_connect"] = {
             "status": "unhealthy",
             "url": settings.voca_connect_url,
