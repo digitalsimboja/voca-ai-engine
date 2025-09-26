@@ -20,6 +20,7 @@ import {
   VocaCharacter,
   RuntimeMetrics,
 } from "../types/index.js";
+import { createDatabaseAdapter, runMigrations } from "./run-migration.js";
 
 /**
  * Embedded ElizaOS Manager for Multi-Agent Support
@@ -67,6 +68,7 @@ export class EmbeddedElizaOSManager {
     cache.setRuntimeMetrics("global", metrics);
   }
 
+
   async createAgent(
     vendorId: string,
     agentConfig: AgentConfig
@@ -90,11 +92,16 @@ export class EmbeddedElizaOSManager {
         },
       });
 
-      console.log("Loaded plugins:", runtime.plugins.map(p => p.name));
-
       console.log("Database adapter:", runtime.adapter);
 
-      // Initialize runtime - this will run migrations through the sql plugin
+      // Create database adapter and run migrations before runtime initialization
+      const adapter = await createDatabaseAdapter(runtime.agentId);
+      await runMigrations(adapter, runtime.agentId, [sqlPlugin, bootstrapPlugin, googleGenaiPlugin, orderPlugin]);
+      
+      // Set the adapter on the runtime
+      runtime.adapter = adapter;
+
+      // Initialize runtime - this will now work because tables already exist
       await runtime.initialize();
 
       // Store in cache and update metrics
