@@ -29,10 +29,10 @@ export class PoolManager {
       console.log('Initializing Pool Manager...');
       
       // Create default pool
-      await this.createPool('default');
+      await this.createPool('pool-1');
       
       this.isInitialized = true;
-      console.log('Pool Manager initialized successfully');
+
       return true;
     } catch (error: any) {
       console.error('Error initializing Pool Manager:', error);

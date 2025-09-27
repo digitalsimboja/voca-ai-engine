@@ -26,8 +26,6 @@ export function createVendorRoutes(vocaAiEngineUrl: string, poolManager: PoolMan
         });
         return;
       }
-
-      console.log(`Registering vendor: ${vendor_id}`);
       
       const result: VendorRegistrationResponse = await poolManager.registerVendor(vendor_id, agent_config);
       

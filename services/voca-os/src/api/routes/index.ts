@@ -14,7 +14,6 @@ import { PoolManager } from '../../services/pool-manager.js';
 export function setupRoutes(app: Application, urlPrefix: string, vocaAiEngineUrl: string): void {
   console.log('Setting up Voca OS API routes...');
   
-  // Initialize pool manager
   const poolManager = new PoolManager();
   
   // Initialize pool manager asynchronously
