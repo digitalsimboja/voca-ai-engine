@@ -95,7 +95,7 @@ async def provision_agent(
     This endpoint directly provisions the agent by:
     1. Creating agent record in database
     2. Provisioning AWS Connect resources (if voice/SMS channels requested)
-    3. Creating ElizaOS agent configuration (if social media channels requested)
+    3. Creating ElizaOS agent configuration
     4. Setting up webhooks and integrations
     """
     try:
@@ -104,6 +104,8 @@ async def provision_agent(
         provisioning_results = await _provision_agent(
             request.dict()
         )
+        
+        logger.info("Provisioning results", provisioning_results=provisioning_results)
         # Extract agent_id from VocaOS response
         agent_id = None
         if provisioning_results.get("voca_os", {}).get("status") == "success":
@@ -339,9 +341,6 @@ async def _provision_agent(
     settings = get_settings()
     
     try:
-        logger.info("Agent provisioning started...")
-        logger.info(f"Received request to provision agent: {request_data}")
-        
         # Validate vendor ID
         vendor_identifier = validate_vendor_id(request_data)
         
@@ -372,8 +371,7 @@ async def _provision_agent(
                 
                 # Log the complete agent configuration being sent to VocaOS
                 logger.info("Sending complete agent configuration to VocaOS", 
-                           vendor_id=vendor_identifier,
-                           agent_config=agent_config)
+                           vendor_id=vendor_identifier)
                 
                 # Provision with VocaOS
                 provisioning_results["voca_os"] = await provision_vocaos_agent(

@@ -6,9 +6,7 @@ and coordinates with Voca OS (ElizaOS agents) and Voca Connect (AWS Connect).
 """
 
 import os
-import logging
 from datetime import datetime
-from typing import Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +30,7 @@ settings = get_settings()
 # Create FastAPI app
 app = FastAPI(
     title="Voca AI Engine",
-    description="Core orchestration service for agent routing and provisioning",
+    description="Core orchestration service for message routing and agent provisioning",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",

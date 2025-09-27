@@ -66,12 +66,6 @@ def build_agent_configuration(request_data: Dict[str, Any]) -> Dict[str, Any]:
         })
     }
     
-    logger.info("Built agent configuration", 
-               agent_name=request_data.get('name'),
-               has_profile=bool(configuration.get('profile')),
-               has_social_media=bool(configuration.get('socialMedia')),
-               has_integrations=bool(configuration.get('integrations')))
-    
     return agent_config
 
 
