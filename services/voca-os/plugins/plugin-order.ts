@@ -594,10 +594,11 @@ const orderEvents = {
           // Use model to rewrite the DB response into a concise customer-facing message
           let finalText = orderInfo.response;
           try {
-            const aiResultAny: any = await runtime.useModel("generateText", {
-              runtime,
+            const aiResultAny: any = await runtime.useModel(ModelType.TEXT_LARGE, {
               state: fullState,
               prompt: `User asked about order ${orderInfo.orderId}. Please rewrite the following raw order status into a concise, polite customer-facing message:\n\n${orderInfo.response}`,
+              temperature: 0.7,
+              maxTokens: 500,
             });
 
             if (aiResultAny) {

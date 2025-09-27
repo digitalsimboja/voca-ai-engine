@@ -7,7 +7,6 @@ This module handles agent creation, configuration, and provisioning requests.
 from datetime import datetime
 import httpx
 from typing import Dict, Any, Optional
-from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -33,7 +32,7 @@ settings = get_settings()
 
 
 class AgentProvisioningRequest(BaseModel):
-    """Agent provisioning request model - matches VocaAIAgentClient format."""
+    """Agent provisioning request model"""
     name: str = Field(..., description="Name of the agent")
     vendor_id: Optional[str] = Field(None, description="Vendor ID from the backend")
     description: str = Field(..., description="Description of the agent")

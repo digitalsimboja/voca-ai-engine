@@ -8,8 +8,6 @@ and routes them to the correct agent based on vendor identification.
 from datetime import datetime
 import httpx
 from typing import Dict, Any, Optional
-import re
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -25,7 +23,7 @@ settings = get_settings()
 
 class IncomingMessage(BaseModel):
     """Incoming message from external platform."""
-    platform: str = Field(..., description="Platform (whatsapp, instagram_dm, facebook_messenger, etc.)")
+    platform: str = Field(..., description="Platform (whatsapp, instagram_dm, facebook_messenger, twitter, etc.)")
     message: str = Field(..., description="Message content")
     user_id: str = Field(..., description="User identifier (phone number, username, etc.)")
     vendor_id: Optional[str] = Field(None, description="Vendor identifier (if known)")
@@ -249,16 +247,16 @@ async def _determine_agent(request: IncomingMessage) -> Optional[Dict[str, Any]]
     3. If still not found, try to infer from message content or metadata
     """
     
-    # Priority 1: Direct vendor_id provided
     if request.vendor_id:
-        logger.info("Using provided vendor_id", vendor_id=request.vendor_id)
-        return {
-            "agent_id": f"vendor-{request.vendor_id}",
-            "vendor_id": request.vendor_id,
-            "lookup_method": "direct_vendor_id"
-        }
+        logger.info("Using provided vendor ID", vendor_id=request.vendor_id)
+        # Look up the agent details for this vendor_id
+        agent_info = await _lookup_agent_by_vendor(request.vendor_id)
+        if agent_info:
+            logger.info("Found agent via vendor ID", agent_info=agent_info)
+            return agent_info
+        else:
+            logger.warning("Vendor ID provided but agent not found", vendor_id=request.vendor_id)
     
-    # Priority 2: Lookup by user_id and platform
     agent_info = await _lookup_agent_by_user(request.user_id, request.platform, request.metadata)
     if agent_info:
         logger.info("Found agent via user lookup", agent_info=agent_info)
@@ -272,7 +270,47 @@ async def _determine_agent(request: IncomingMessage) -> Optional[Dict[str, Any]]
     
     logger.warning("No agent found for message", 
                   user_id=request.user_id,
-                  platform=request.platform)
+                  platform=request.platform,
+                  vendor_id=request.vendor_id)
+    return None
+
+
+async def _lookup_agent_by_vendor(vendor_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Lookup agent by vendor identifier.
+    
+    This queries VocaOS to find the agent associated with a specific vendor_id.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.voca_os_url}/voca-os/api/v1/pools",
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                pools_data = response.json()
+                
+                # Search for the agent with matching vendor_id
+                for pool in pools_data.get("pools", []):
+                    runtimes = pool.get("vocaClient", {}).get("runtimeMetrics", {}).get("runtimes", [])
+                    for runtime in runtimes:
+                        # Check if this runtime matches the vendor_id
+                        if (runtime.get("agentId") and 
+                            (runtime.get("agentId") == vendor_id or 
+                             runtime.get("agentId").replace("vendor-", "") == vendor_id or
+                             vendor_id in runtime.get("vendors", []))):
+                            return {
+                                "agent_id": runtime["agentId"],
+                                "vendor_id": vendor_id,
+                                "lookup_method": "vendor_id_lookup",
+                                "character": runtime.get("character", "Unknown")
+                            }
+    except Exception as e:
+        logger.error("Error looking up agent by vendor", 
+                    vendor_id=vendor_id, 
+                    error_message=str(e))
+    
     return None
 
 
@@ -289,18 +327,13 @@ async def _lookup_agent_by_user(user_id: str, platform: str, metadata: Optional[
     
     # Check if this is a test user (for our current test agents)
     if user_id.startswith("+") or user_id.isdigit():
-        # This looks like a phone number
-        # For testing, we'll assign to the most recent agent
-        # In production, this would be a database lookup
-        
-        # Get the latest agent from VocaOS
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{settings.voca_os_url}/voca-os/api/v1/pools",
                     timeout=10.0
                 )
-                
+    
                 if response.status_code == 200:
                     pools_data = response.json()
                     
@@ -311,9 +344,14 @@ async def _lookup_agent_by_user(user_id: str, platform: str, metadata: Optional[
                             # Get the last runtime (most recent)
                             latest_runtime = runtimes[-1]
                             if latest_runtime.get("agentId") and latest_runtime.get("agentId") != "default-runtime":
+                                # Extract vendor_id from agent_id or use the first vendor in the list
+                                vendor_id = latest_runtime["agentId"].replace("vendor-", "")
+                                if not vendor_id and latest_runtime.get("vendors"):
+                                    vendor_id = latest_runtime["vendors"][0]
+                                
                                 return {
                                     "agent_id": latest_runtime["agentId"],
-                                    "vendor_id": latest_runtime["agentId"].replace("vendor-", ""),
+                                    "vendor_id": vendor_id,
                                     "lookup_method": "user_phone_lookup",
                                     "character": latest_runtime.get("character", "Unknown")
                                 }
@@ -334,7 +372,38 @@ async def _infer_agent_from_message(request: IncomingMessage) -> Optional[Dict[s
     """
     
     # TODO: Implement intelligent agent inference
-    # For now, return None to indicate no inference possible
+    # For now, we'll fall back to getting the most recent agent as a last resort
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.voca_os_url}/voca-os/api/v1/pools",
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                pools_data = response.json()
+                
+                # Find the most recent agent (last in the list) as fallback
+                for pool in pools_data.get("pools", []):
+                    runtimes = pool.get("vocaClient", {}).get("runtimeMetrics", {}).get("runtimes", [])
+                    if runtimes:
+                        # Get the last runtime (most recent)
+                        latest_runtime = runtimes[-1]
+                        if latest_runtime.get("agentId") and latest_runtime.get("agentId") != "default-runtime":
+                            # Extract vendor_id from agent_id or use the first vendor in the list
+                            vendor_id = latest_runtime["agentId"].replace("vendor-", "")
+                            if not vendor_id and latest_runtime.get("vendors"):
+                                vendor_id = latest_runtime["vendors"][0]
+                            
+                            return {
+                                "agent_id": latest_runtime["agentId"],
+                                "vendor_id": vendor_id,
+                                "lookup_method": "message_inference_fallback",
+                                "character": latest_runtime.get("character", "Unknown")
+                            }
+    except Exception as e:
+        logger.error("Error inferring agent from message", error_message=str(e))
+    
     return None
 
 
@@ -350,9 +419,9 @@ async def _route_to_vocaos(agent_info: Dict[str, Any], request: IncomingMessage)
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{settings.voca_os_url}/voca-os/api/v1/messages",
+                f"{settings.voca_os_url}/voca-os/api/v1/messages/process",
                 json={
-                    "vendor_id": agent_info["vendor_id"],
+                    "vendor_id": f"vendor-{agent_info['vendor_id']}",
                     "message": request.message,
                     "platform": request.platform,
                     "user_id": request.user_id

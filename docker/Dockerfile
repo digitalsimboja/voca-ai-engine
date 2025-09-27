@@ -16,8 +16,6 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create directories
-RUN mkdir -p /app/app /app/logs
 
 # Copy shared utils first and install
 COPY shared-utils/ ./shared-utils/

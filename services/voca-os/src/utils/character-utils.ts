@@ -359,13 +359,14 @@ export function createDynamicCharacter(vendorId: string, agentConfig: AgentConfi
         "emphasizes helpfulness",
       ],
     },
-    plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-google-genai", "@elizaos/plugin-bootstrap"],
+    plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
     settings: {
       secrets: {
         GOOGLE_GENERATIVE_AI_API_KEY: process.env["GOOGLE_GENERATIVE_AI_API_KEY"] || '',
+        OPENAI_API_KEY: process.env["OPENAI_API_KEY"] || '',
       },
       avatar: `https://elizaos.github.io/eliza-avatars/${profile.name.toLowerCase().replace(/\s+/g, '-')}.png`,
-      model: "gemini-1.5-pro",
+      model: "gpt-3.5-turbo",
       temperature: 0.7,
       maxTokens: 2000,
       memoryLimit: 1000,
@@ -374,7 +375,7 @@ export function createDynamicCharacter(vendorId: string, agentConfig: AgentConfi
     
     // VocaOS-specific properties
     clients: ["twitter"],
-    modelProvider: "google-genai",
+    modelProvider: "openai",
     lore: [
       `I work for ${profile.name} and specialize in customer service.`,
       `I have access to product information and can help with orders.`,

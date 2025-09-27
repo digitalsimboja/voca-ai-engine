@@ -28,8 +28,6 @@ export function createMessageRoutes(vocaAiEngineUrl: string, poolManager: PoolMa
       }
 
       console.log(`Processing message for vendor: ${vendor_id}, platform: ${platform}, user: ${user_id}`);
-      console.log(`Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
-      
       const result: MessageResponse = await poolManager.processMessage(vendor_id, message, platform, user_id);
       
       res.json({
