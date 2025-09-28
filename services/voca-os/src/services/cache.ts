@@ -4,7 +4,7 @@ import {
   VocaCharacter,
   VendorDetails,
   RuntimeMetrics,
-  PoolMetrics
+  PoolMetrics,
 } from "../types/index.js";
 
 /**
@@ -29,8 +29,13 @@ class Cache {
   /**
    * Get agent runtime for a vendor
    */
-  getAgentRuntime(vendorId: string): { id: UUID; runtime: IAgentRuntime } | null {
-    return this.agentRuntimes.get(vendorId) as { id: UUID; runtime: IAgentRuntime } | null;
+  getAgentRuntime(
+    vendorId: string
+  ): { id: UUID; runtime: IAgentRuntime } | null {
+    return this.agentRuntimes.get(vendorId) as {
+      id: UUID;
+      runtime: IAgentRuntime;
+    } | null;
   }
 
   /**
@@ -100,12 +105,14 @@ class Cache {
    * Get runtime metrics
    */
   getRuntimeMetrics(key: string): RuntimeMetrics {
-    return this.runtimeMetrics.get(key) || {
-      totalAgents: 0,
-      messageCount: 0,
-      averageResponseTime: 0,
-      errorCount: 0,
-    };
+    return (
+      this.runtimeMetrics.get(key) || {
+        totalAgents: 0,
+        messageCount: 0,
+        averageResponseTime: 0,
+        errorCount: 0,
+      }
+    );
   }
 
   /**
@@ -119,13 +126,15 @@ class Cache {
    * Get pool metrics
    */
   getPoolMetrics(poolId: string): PoolMetrics {
-    return this.poolMetrics.get(poolId) || {
-      messageCount: 0,
-      responseTime: 0,
-      errorCount: 0,
-      vendorCount: 0,
-      characterSwitches: 0
-    };
+    return (
+      this.poolMetrics.get(poolId) || {
+        messageCount: 0,
+        responseTime: 0,
+        errorCount: 0,
+        vendorCount: 0,
+        characterSwitches: 0,
+      }
+    );
   }
 
   /**
@@ -216,9 +225,11 @@ class Cache {
    * Check if vendor exists in cache
    */
   hasVendor(vendorId: string): boolean {
-    return this.agentRuntimes.has(vendorId) || 
-           this.characterConfigs.has(vendorId) || 
-           this.vendorDetails.has(vendorId);
+    return (
+      this.agentRuntimes.has(vendorId) ||
+      this.characterConfigs.has(vendorId) ||
+      this.vendorDetails.has(vendorId)
+    );
   }
 
   /**
@@ -226,7 +237,7 @@ class Cache {
    */
   getAllVendorIds(): string[] {
     const vendorIds = new Set<string>();
-    
+
     for (const vendorId of this.agentRuntimes.keys()) {
       vendorIds.add(vendorId);
     }
@@ -236,7 +247,7 @@ class Cache {
     for (const vendorId of this.vendorDetails.keys()) {
       vendorIds.add(vendorId);
     }
-    
+
     return Array.from(vendorIds);
   }
 

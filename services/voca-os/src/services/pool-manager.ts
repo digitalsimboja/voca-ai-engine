@@ -15,6 +15,7 @@ export class PoolManager {
   private maxPools: number;
   private maxVendorsPerPool: number;
   private isInitialized: boolean = false;
+  private poolCreationLock: Map<string, Promise<AgentPool>> = new Map();
 
   constructor(maxPools: number = 10, maxVendorsPerPool: number = 5000) {
     this.maxPools = maxPools;
@@ -22,81 +23,7 @@ export class PoolManager {
   }
 
   /**
-   * Initialize the pool manager
-   */
-  async initialize(): Promise<boolean> {
-    try {
-      console.log('Initializing Pool Manager...');
-      
-      // Create default pool
-      await this.createPool('pool-1');
-      
-      this.isInitialized = true;
-
-      return true;
-    } catch (error: any) {
-      console.error('Error initializing Pool Manager:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Create a new agent pool
-   * @param poolId - Unique identifier for the pool
-   * @param maxVendors - Maximum vendors allowed in this pool
-   * @returns Created pool instance
-   */
-  async createPool(poolId: string, maxVendors?: number): Promise<AgentPool> {
-    if (this.pools.size >= this.maxPools) {
-      throw new Error(`Maximum number of pools (${this.maxPools}) reached`);
-    }
-
-    if (this.pools.has(poolId)) {
-      throw new Error(`Pool ${poolId} already exists`);
-    }
-
-    const pool = new AgentPool(poolId, maxVendors || this.maxVendorsPerPool);
-    await pool.initialize();
-    
-    this.pools.set(poolId, pool);
-    console.log(`Created new pool: ${poolId}`);
-    
-    return pool;
-  }
-
-  /**
-   * Get an existing pool by ID
-   * @param poolId - Pool identifier
-   * @returns Pool instance or null if not found
-   */
-  getPool(poolId: string): AgentPool | null {
-    return this.pools.get(poolId) || null;
-  }
-
-  /**
-   * Find the best pool for a new vendor (load balancing)
-   * @returns Pool ID with the least vendors
-   */
-  private findBestPool(): string {
-    let bestPoolId = 'default';
-    let minVendorCount = Infinity;
-
-    for (const [poolId, pool] of this.pools) {
-      const vendorCount = cache.getVendorCountForPool(poolId);
-      if (vendorCount < minVendorCount && vendorCount < pool.getMaxVendors()) {
-        minVendorCount = vendorCount;
-        bestPoolId = poolId;
-      }
-    }
-
-    return bestPoolId;
-  }
-
-  /**
-   * Register a vendor in the best available pool
-   * @param vendorId - Vendor identifier
-   * @param agentConfig - Agent configuration
-   * @returns Registration result
+   * Register a vendor with improved pool creation logic
    */
   async registerVendor(vendorId: string, agentConfig: AgentConfig): Promise<VendorRegistrationResponse> {
     // Check if vendor is already registered
@@ -119,53 +46,113 @@ export class PoolManager {
       }
     }
 
-    // Find the best pool for this vendor
-    const poolId = this.findBestPool();
-    const pool = this.getPool(poolId);
+    // Try to find an available pool
+    const availablePool = await this.findAvailablePool();
     
-    if (!pool) {
-      throw new Error(`Pool ${poolId} not found`);
-    }
-
-    try {
-      const result = await pool.registerVendor(vendorId, agentConfig);
-      
-      // Map vendor to pool
-      cache.setVendorPool(vendorId, poolId);
-      
-      console.log(`Vendor ${vendorId} registered in pool ${poolId}`);
-      return result;
-    } catch (error: any) {
-      // If pool is full, try to create a new pool
-      if (error.message.includes('maximum capacity')) {
-        console.log(`Pool ${poolId} is full, attempting to create new pool...`);
-        
-        const newPoolId = `pool-${Date.now()}`;
-        try {
-          const newPool = await this.createPool(newPoolId);
-          const result = await newPool.registerVendor(vendorId, agentConfig);
-          
-          // Map vendor to new pool
-          cache.setVendorPool(vendorId, newPoolId);
-          
-          console.log(`Vendor ${vendorId} registered in new pool ${newPoolId}`);
-          return result;
-        } catch (newPoolError: any) {
-          console.error(`Failed to create new pool: ${newPoolError.message}`);
-          throw new Error(`All pools are at maximum capacity. Cannot register vendor ${vendorId}`);
+    if (availablePool) {
+      try {
+        const result = await availablePool.registerVendor(vendorId, agentConfig);
+        cache.setVendorPool(vendorId, availablePool.getPoolId());
+        console.log(`Vendor ${vendorId} registered in existing pool ${availablePool.getPoolId()}`);
+        return result;
+      } catch (error: any) {
+        if (error.message.includes('maximum capacity')) {
+          console.log(`Pool ${availablePool.getPoolId()} became full during registration, will create new pool`);
+        } else {
+          throw error;
         }
       }
-      throw error;
+    }
+
+    // No available pool found, create a new one
+    return await this.createNewPoolAndRegister(vendorId, agentConfig);
+  }
+
+  /**
+   * Find an available pool with space
+   */
+  private async findAvailablePool(): Promise<AgentPool | null> {
+    for (const [poolId, pool] of this.pools) {
+      const vendorCount = cache.getVendorCountForPool(poolId);
+      if (vendorCount < pool.getMaxVendors()) {
+        return pool;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Create a new pool and register the vendor
+   */
+  private async createNewPoolAndRegister(vendorId: string, agentConfig: AgentConfig): Promise<VendorRegistrationResponse> {
+    // Check if we can create more pools
+    if (this.pools.size >= this.maxPools) {
+      throw new Error(`Maximum number of pools (${this.maxPools}) reached. Cannot register vendor ${vendorId}`);
+    }
+
+    const newPoolId = `pool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Use a lock to prevent multiple pools being created simultaneously
+    const lockKey = 'pool-creation';
+    if (this.poolCreationLock.has(lockKey)) {
+      // Wait for the existing pool creation to complete
+      await this.poolCreationLock.get(lockKey);
+      // Try to find an available pool again
+      const availablePool = await this.findAvailablePool();
+      if (availablePool) {
+        const result = await availablePool.registerVendor(vendorId, agentConfig);
+        cache.setVendorPool(vendorId, availablePool.getPoolId());
+        return result;
+      }
+    }
+
+    // Create new pool with lock
+    const poolCreationPromise = this.createPool(newPoolId);
+    this.poolCreationLock.set(lockKey, poolCreationPromise);
+
+    try {
+      const newPool = await poolCreationPromise;
+      const result = await newPool.registerVendor(vendorId, agentConfig);
+      cache.setVendorPool(vendorId, newPoolId);
+      
+      console.log(`Vendor ${vendorId} registered in newly created pool ${newPoolId}`);
+      return result;
+    } finally {
+      // Clean up the lock
+      this.poolCreationLock.delete(lockKey);
     }
   }
 
   /**
+   * Create a new agent pool
+   */
+  async createPool(poolId: string, maxVendors?: number): Promise<AgentPool> {
+    if (this.pools.size >= this.maxPools) {
+      throw new Error(`Maximum number of pools (${this.maxPools}) reached`);
+    }
+
+    if (this.pools.has(poolId)) {
+      throw new Error(`Pool ${poolId} already exists`);
+    }
+
+    const pool = new AgentPool(poolId, maxVendors || this.maxVendorsPerPool);
+    await pool.initialize();
+    
+    this.pools.set(poolId, pool);
+    console.log(`Created new pool: ${poolId}`);
+    
+    return pool;
+  }
+
+  /**
+   * Get an existing pool by ID
+   */
+  getPool(poolId: string): AgentPool | null {
+    return this.pools.get(poolId) || null;
+  }
+
+  /**
    * Process a message for a vendor
-   * @param vendorId - Vendor identifier
-   * @param message - Message content
-   * @param platform - Platform (whatsapp, instagram, etc.)
-   * @param userId - User identifier
-   * @returns Response object
    */
   async processMessage(vendorId: string, message: string, platform: string, userId: string): Promise<MessageResponse> {
     const poolId = cache.getVendorPool(vendorId);
@@ -184,8 +171,6 @@ export class PoolManager {
 
   /**
    * Remove a vendor from its pool
-   * @param vendorId - Vendor identifier
-   * @returns Removal result
    */
   async removeVendor(vendorId: string): Promise<{ success: boolean; message: string }> {
     const poolId = cache.getVendorPool(vendorId);
@@ -204,12 +189,41 @@ export class PoolManager {
     // Remove vendor from pool mapping
     cache.removeVendorPool(vendorId);
     
+    // Check if pool is now empty and can be cleaned up
+    await this.cleanupEmptyPools();
+    
     return result;
   }
 
   /**
+   * Clean up empty pools (except the first one)
+   */
+  private async cleanupEmptyPools(): Promise<void> {
+    const poolsToRemove: string[] = [];
+    
+    for (const [poolId, pool] of this.pools) {
+      // Don't remove the first pool (pool-1)
+      if (poolId === 'pool-1') continue;
+      
+      const vendorCount = cache.getVendorCountForPool(poolId);
+      if (vendorCount === 0) {
+        poolsToRemove.push(poolId);
+      }
+    }
+
+    // Remove empty pools
+    for (const poolId of poolsToRemove) {
+      const pool = this.pools.get(poolId);
+      if (pool) {
+        await pool.shutdown();
+        this.pools.delete(poolId);
+        console.log(`Cleaned up empty pool: ${poolId}`);
+      }
+    }
+  }
+
+  /**
    * Get all pools with their metrics
-   * @returns Array of pool information
    */
   getAllPools(): Array<{
     poolId: string;
@@ -243,7 +257,6 @@ export class PoolManager {
 
   /**
    * Get overall system metrics
-   * @returns System-wide metrics
    */
   getSystemMetrics(): {
     totalPools: number;
@@ -280,6 +293,24 @@ export class PoolManager {
       averageResponseTime,
       pools
     };
+  }
+
+  /**
+   * Initialize the pool manager
+   */
+  async initialize(): Promise<boolean> {
+    try {
+      console.log('Initializing Improved Pool Manager...');
+      
+      // Create default pool-1
+      await this.createPool('pool-1');
+      
+      this.isInitialized = true;
+      return true;
+    } catch (error: any) {
+      console.error('Error initializing Improved Pool Manager:', error);
+      return false;
+    }
   }
 
   /**

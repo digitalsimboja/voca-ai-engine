@@ -109,17 +109,13 @@ export interface MessageRequest {
 }
 
 export interface MessageResponse {
-  poolId: string;
   vendor_id: string;
   platform: string;
   user_id: string;
   message: string;
   response: string;
   timestamp: string;
-  character: string;
   mode: string;
-  elizaos_status?: any;
-  processing_time?: number;
   error?: string;
 }
 

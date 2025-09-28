@@ -97,31 +97,6 @@ export async function runDatabaseMigrations(
 }
 
 /**
- * Run database migrations using environment variables
- * 
- * @param vendorId - Unique identifier for the vendor
- * @param plugins - Array of plugins that have database schemas
- * @returns Promise that resolves when migrations are complete
- */
-export async function runDatabaseMigrationsFromEnv(
-  vendorId: string,
-  plugins: Plugin[]
-): Promise<void> {
-  const config: DatabaseMigrationConfig = {
-    vendorId,
-  };
-
-  if (process.env["PGLITE_DATA_DIR"]) {
-    config.dataDir = process.env["PGLITE_DATA_DIR"];
-  }
-  if (process.env["POSTGRES_URL"]) {
-    config.postgresUrl = process.env["POSTGRES_URL"];
-  }
-
-  return runDatabaseMigrations(config, plugins);
-}
-
-/**
  * Get database adapter configuration
  */
 export function getDatabaseConfig(): { dataDir?: string; postgresUrl?: string } {

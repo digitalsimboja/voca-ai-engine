@@ -19,6 +19,7 @@ import {
   AgentConfig,
   VocaCharacter,
   RuntimeMetrics,
+  MessageResponse,
 } from "../types/index.js";
 import { createDatabaseAdapter, runMigrations } from "./run-migration.js";
 
@@ -58,7 +59,7 @@ export class EmbeddedElizaOSManager {
       ) !== undefined
     );
   }
-  
+
   /**
    * Update agent count in metrics
    */
@@ -67,7 +68,6 @@ export class EmbeddedElizaOSManager {
     metrics.totalAgents += delta;
     cache.setRuntimeMetrics("global", metrics);
   }
-
 
   async createAgent(
     vendorId: string,
@@ -80,7 +80,7 @@ export class EmbeddedElizaOSManager {
     try {
       const characterConfig = createDynamicCharacter(vendorId, agentConfig);
       const { configuration, ...runtimeCharacter } = characterConfig;
-      
+
       const runtime = new AgentRuntime({
         character: runtimeCharacter,
         plugins: [sqlPlugin, bootstrapPlugin, googlePlugin, orderPlugin],
@@ -96,8 +96,13 @@ export class EmbeddedElizaOSManager {
 
       // Create database adapter and run migrations before runtime initialization
       const adapter = await createDatabaseAdapter(runtime.agentId);
-      await runMigrations(adapter, runtime.agentId, [sqlPlugin, bootstrapPlugin, googlePlugin, orderPlugin]);
-      
+      await runMigrations(adapter, runtime.agentId, [
+        sqlPlugin,
+        bootstrapPlugin,
+        googlePlugin,
+        orderPlugin,
+      ]);
+
       // Set the adapter on the runtime
       runtime.adapter = adapter;
 
@@ -214,23 +219,14 @@ export class EmbeddedElizaOSManager {
     userMessage: string,
     platform: string = "whatsapp",
     userId: string = "user"
-  ): Promise<{
-    success: boolean;
-    reply?: string;
-    vendorId: string;
-    platform: string;
-    userId: string;
-    agentId: string;
-    timestamp: string;
-    processing_time: number;
-    mode: string;
-    elizaos_response?: any;
-    error?: string;
-  }> {
+  ): Promise<MessageResponse> {
     const startTime = Date.now();
 
     try {
-      const agentRuntime = cache.getAgentRuntime(vendorId) as { id: string; runtime: IAgentRuntime };
+      const agentRuntime = cache.getAgentRuntime(vendorId) as {
+        id: string;
+        runtime: IAgentRuntime;
+      };
       if (!agentRuntime?.id) {
         throw new Error(
           `No agent found for vendor: ${vendorId}. Please register the vendor first.`
@@ -250,7 +246,6 @@ export class EmbeddedElizaOSManager {
         roomId
       );
 
-      // Process message using ElizaOS event-based system
       let responseText = "";
 
       try {
@@ -259,23 +254,12 @@ export class EmbeddedElizaOSManager {
           message,
           callback: async (content: any) => {
             if (content?.text) {
-              console.log(
-                `${cache.getCharacterConfig(vendorId)?.name || "Agent"}:`,
-                content.text
-              );
               responseText = content.text;
             } else if (content?.thought) {
-              console.log(
-                `${cache.getCharacterConfig(vendorId)?.name || "Agent"} (thought):`,
-                content.thought
-              );
               responseText = content.thought;
             } else {
               console.log("No text or thought found in callback content");
-              console.log(
-                "Available properties:",
-                content ? Object.keys(content) : "none"
-              );
+              console.log(content);
             }
           },
         });
@@ -295,23 +279,13 @@ export class EmbeddedElizaOSManager {
       this.updateMessageMetrics(processingTime);
 
       return {
-        success: true,
-        reply: responseText || "I received your message.",
-        vendorId,
+        vendor_id: vendorId,
         platform,
-        userId,
-        agentId: agentRuntime.id,
+        user_id: userId,
+        message: userMessage,
+        response: responseText || "I received your message.",
         timestamp: new Date().toISOString(),
-        processing_time: processingTime,
         mode: "embedded_elizaos",
-        elizaos_response: {
-          agentId: agentRuntime.id,
-          character: cache.getCharacterConfig(vendorId)?.name || "Unknown",
-          plugins: cache.getCharacterConfig(vendorId)?.plugins || [],
-          modelProvider:
-            cache.getCharacterConfig(vendorId)?.settings?.["modelProvider"] ||
-            "openai",
-        },
       };
     } catch (error: any) {
       const processingTime = Date.now() - startTime;
@@ -319,15 +293,15 @@ export class EmbeddedElizaOSManager {
       console.error(`Error processing message for vendor ${vendorId}:`, error);
 
       return {
-        success: false,
-        error: error.message,
-        vendorId,
+        vendor_id: vendorId,
         platform,
-        userId,
-        agentId: "",
+        user_id: userId,
+        message: userMessage,
+        response:
+          "I'm sorry, I'm having trouble processing your message right now.",
         timestamp: new Date().toISOString(),
-        processing_time: processingTime,
         mode: "embedded_elizaos_error",
+        error: error.message,
       };
     }
   }
@@ -525,7 +499,10 @@ export class EmbeddedElizaOSManager {
         }
         console.log(`Agent for vendor ${vendorId} shut down successfully`);
       } catch (error: any) {
-        console.error(`Error shutting down agent for vendor ${vendorId}:`, error);
+        console.error(
+          `Error shutting down agent for vendor ${vendorId}:`,
+          error
+        );
       }
     }
 

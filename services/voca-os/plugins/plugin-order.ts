@@ -208,7 +208,7 @@ async function processOrderQuery(
   const orderData = await fetchOrderFromDatabase(orderId);
   if (!orderData) {
     return {
-      response: `No order found with number ${orderId}.`,
+      response: `After checking the database, I found no order with number ${orderId}.`,
       summary: `Order ${orderId} not found`,
       orderId: orderId,
       status: "not_found",

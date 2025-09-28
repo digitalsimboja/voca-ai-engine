@@ -1,6 +1,6 @@
-import { Router, Request, Response } from 'express';
-import { PoolManager } from '../../services/pool-manager.js';
-import { MessageRequest, MessageResponse } from '../../types/index.js';
+import { Router, Request, Response } from "express";
+import { PoolManager } from "../../services/pool-manager.js";
+import { MessageRequest, MessageResponse } from "../../types/index.js";
 
 /**
  * Create message processing routes
@@ -8,53 +8,68 @@ import { MessageRequest, MessageResponse } from '../../types/index.js';
  * @param poolManager - Pool manager instance
  * @returns Express router with message endpoints
  */
-export function createMessageRoutes(vocaAiEngineUrl: string, poolManager: PoolManager): Router {
+export function createMessageRoutes(
+  vocaAiEngineUrl: string,
+  poolManager: PoolManager
+): Router {
   const router = Router();
 
   /**
    * Process a message for a vendor
    */
-  router.post('/process', async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { vendor_id, message, platform = 'whatsapp', user_id = 'user' }: MessageRequest = req.body;
+  router.post(
+    "/process",
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const {
+          vendor_id,
+          message,
+          platform = "whatsapp",
+          user_id = "user",
+        }: MessageRequest = req.body;
 
-      if (!vendor_id || !message) {
-        res.status(400).json({
-          error: 'Bad Request',
-          message: 'vendor_id and message are required',
-          timestamp: new Date().toISOString()
+        if (!vendor_id || !message) {
+          res.status(400).json({
+            error: "Bad Request",
+            message: "vendor_id and message are required",
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+
+        const result: MessageResponse = await poolManager.processMessage(
+          vendor_id,
+          message,
+          platform,
+          user_id
+        );
+
+        res.json({
+          success: true,
+          message: "Message processed successfully",
+          data: result,
+          timestamp: new Date().toISOString(),
         });
-        return;
-      }
+      } catch (error: any) {
+        console.error("Error processing message:", error);
 
-      console.log(`Processing message for vendor: ${vendor_id}, platform: ${platform}, user: ${user_id}`);
-      const result: MessageResponse = await poolManager.processMessage(vendor_id, message, platform, user_id);
-      
-      res.json({
-        success: true,
-        message: 'Message processed successfully',
-        data: result,
-        timestamp: new Date().toISOString()
-      });
-    } catch (error: any) {
-      console.error('Error processing message:', error);
-      
-      res.status(500).json({
-        success: false,
-        error: 'Internal Server Error',
-        message: error.message,
-        timestamp: new Date().toISOString()
-      });
+        res.status(500).json({
+          success: false,
+          error: "Internal Server Error",
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
-  });
+  );
 
   /**
    * Get message processing statistics
    */
-  router.get('/stats', async (req: Request, res: Response): Promise<void> => {
+  router.get("/stats", async (req: Request, res: Response): Promise<void> => {
     try {
       const systemMetrics = poolManager.getSystemMetrics();
-      
+
       res.json({
         success: true,
         data: {
@@ -63,24 +78,24 @@ export function createMessageRoutes(vocaAiEngineUrl: string, poolManager: PoolMa
           averageResponseTime: systemMetrics.averageResponseTime,
           totalVendors: systemMetrics.totalVendors,
           totalPools: systemMetrics.totalPools,
-          pools: systemMetrics.pools.map(pool => ({
+          pools: systemMetrics.pools.map((pool) => ({
             poolId: pool.poolId,
             messageCount: pool.messageCount,
             errorCount: pool.errorCount,
             responseTime: pool.responseTime,
-            vendorCount: pool.vendorCount
-          }))
+            vendorCount: pool.vendorCount,
+          })),
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     } catch (error: any) {
-      console.error('Error getting message stats:', error);
-      
+      console.error("Error getting message stats:", error);
+
       res.status(500).json({
         success: false,
-        error: 'Internal Server Error',
+        error: "Internal Server Error",
         message: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   });
@@ -88,34 +103,34 @@ export function createMessageRoutes(vocaAiEngineUrl: string, poolManager: PoolMa
   /**
    * Health check for message processing
    */
-  router.get('/health', async (req: Request, res: Response): Promise<void> => {
+  router.get("/health", async (req: Request, res: Response): Promise<void> => {
     try {
       const status = poolManager.getStatus();
-      
+
       if (status.isInitialized && status.activePools > 0) {
         res.json({
-          status: 'healthy',
-          message: 'Message processing is operational',
+          status: "healthy",
+          message: "Message processing is operational",
           pools: status.activePools,
           vendors: status.systemMetrics.totalVendors,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       } else {
         res.status(503).json({
-          status: 'unhealthy',
-          message: 'Message processing is not operational',
+          status: "unhealthy",
+          message: "Message processing is not operational",
           poolManager: {
             isInitialized: status.isInitialized,
-            activePools: status.activePools
+            activePools: status.activePools,
           },
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       }
     } catch (error: any) {
       res.status(503).json({
-        status: 'unhealthy',
+        status: "unhealthy",
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   });
