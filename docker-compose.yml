@@ -1,0 +1,196 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: voca-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-voca_ai_db}
+      - POSTGRES_USER=${POSTGRES_USER:-voca_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-voca_password}
+      - POSTGRES_HOST_AUTH_METHOD=${POSTGRES_HOST_AUTH_METHOD:-trust}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data:rw
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - '127.0.0.1:5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - voca-network
+
+  # Voca AI Engine (Main API)
+  voca-ai-engine:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: voca-ai-engine
+    environment:
+      # Database Configuration
+      - DATABASE_URL=${DATABASE_URL:-postgresql://voca_user:voca_password@postgres:5432/voca_ai_db}
+      - POSTGRES_URL=${POSTGRES_URL:-postgresql://voca_user:voca_password@postgres:5432/voca_ai_db}
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-voca_ai_db}
+      - DB_USER=${DB_USER:-voca_user}
+      - DB_PASSWORD=${DB_PASSWORD:-voca_password}
+      
+      # Application Configuration
+      - APP_ENV=${APP_ENV:-development}
+      - DEBUG=${DEBUG:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NODE_ENV=${NODE_ENV:-development}
+      
+      # JWT Configuration
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-this-in-production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
+      
+      # AWS Configuration
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      
+      # S3 Configuration
+      - S3_CHARACTER_BUCKET=${S3_CHARACTER_BUCKET:-voca-ai-character-store}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-voca-ai-storage}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      
+      # AWS Connect Configuration
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-secret-key}
+      - CONNECT_INSTANCE_ALIAS_PREFIX=${CONNECT_INSTANCE_ALIAS_PREFIX:-voca-connect}
+      - LAMBDA_FUNCTION_PREFIX=${LAMBDA_FUNCTION_PREFIX:-voca-lambda}
+      
+      # CORS Configuration
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      
+      # Service URLs
+      - VOCA_OS_URL=${VOCA_OS_URL:-http://voca-os:5001}
+      - VOCA_CONNECT_URL=${VOCA_CONNECT_URL:-http://voca-connect:5002}
+      - VOCA_AI_ENGINE_URL=${VOCA_AI_ENGINE_URL:-http://voca-ai-engine:5008}
+      
+      # Rate Limiting
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+      
+      # Email Configuration
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      
+      # Google GenAI Configuration
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      - GOOGLE_SMALL_MODEL=${GOOGLE_SMALL_MODEL:-gemini-1.5-flash}
+      - GOOGLE_LARGE_MODEL=${GOOGLE_LARGE_MODEL:-gemini-1.5-flash}
+      - GOOGLE_IMAGE_MODEL=${GOOGLE_IMAGE_MODEL:-gemini-1.5-flash}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
+      
+      # ElizaOS Configuration
+      - SECRET_SALT=${SECRET_SALT:-voca-ai-secret-salt-2024}
+    ports:
+      - '5008:5008'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    networks:
+      - voca-network
+    volumes:
+      - ./logs:/app/logs
+
+  # Voca OS Service
+  voca-os:
+    build:
+      context: ./services/voca-os
+      dockerfile: docker/Dockerfile
+    container_name: voca-os
+    environment:
+      # Database Configuration
+      - DATABASE_URL=${DATABASE_URL:-postgresql://voca_user:voca_password@postgres:5432/voca_ai_db}
+      - POSTGRES_URL=${POSTGRES_URL:-postgresql://voca_user:voca_password@postgres:5432/voca_ai_db}
+      
+      # Application Configuration
+      - NODE_ENV=${NODE_ENV:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      
+      # Google GenAI Configuration
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      - GOOGLE_SMALL_MODEL=${GOOGLE_SMALL_MODEL:-gemini-1.5-flash}
+      - GOOGLE_LARGE_MODEL=${GOOGLE_LARGE_MODEL:-gemini-1.5-flash}
+      - GOOGLE_IMAGE_MODEL=${GOOGLE_IMAGE_MODEL:-gemini-1.5-flash}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
+      
+      # ElizaOS Configuration
+      - SECRET_SALT=${SECRET_SALT:-voca-ai-secret-salt-2024}
+      
+      # Service URLs
+      - VOCA_AI_ENGINE_URL=${VOCA_AI_ENGINE_URL:-http://voca-ai-engine:5008}
+    ports:
+      - '5001:5001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    networks:
+      - voca-network
+    volumes:
+      - ./services/voca-os/characters:/app/characters
+      - ./logs:/app/logs
+
+  # Voca Connect Service
+  voca-connect:
+    build:
+      context: ./services/voca-connect
+      dockerfile: docker/Dockerfile
+    container_name: voca-connect
+    environment:
+      # Database Configuration
+      - DATABASE_URL=${DATABASE_URL:-postgresql://voca_user:voca_password@postgres:5432/voca_ai_db}
+      - POSTGRES_URL=${POSTGRES_URL:-postgresql://voca_user:voca_password@postgres:5432/voca_ai_db}
+      
+      # Application Configuration
+      - NODE_ENV=${NODE_ENV:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      
+      # AWS Connect Configuration
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-secret-key}
+      - CONNECT_INSTANCE_ALIAS_PREFIX=${CONNECT_INSTANCE_ALIAS_PREFIX:-voca-connect}
+      - LAMBDA_FUNCTION_PREFIX=${LAMBDA_FUNCTION_PREFIX:-voca-lambda}
+      
+      # AWS Configuration
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      
+      # Service URLs
+      - VOCA_AI_ENGINE_URL=${VOCA_AI_ENGINE_URL:-http://voca-ai-engine:5008}
+      - VOCA_OS_URL=${VOCA_OS_URL:-http://voca-os:5001}
+    ports:
+      - '5002:5002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      voca-ai-engine:
+        condition: service_started
+    restart: always
+    networks:
+      - voca-network
+    volumes:
+      - ./logs:/app/logs
+
+networks:
+  voca-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
