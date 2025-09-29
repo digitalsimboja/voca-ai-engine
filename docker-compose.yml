@@ -33,6 +33,9 @@ services:
     env_file:
       - .env
     environment:
+      # Port configuration
+      PORT: 5008
+      
       # Database configuration
       DATABASE_URL: ${DATABASE_URL}
       POSTGRES_URL: ${POSTGRES_URL}
@@ -88,13 +91,6 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       
-      # Google GenAI configuration
-      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
-      GOOGLE_SMALL_MODEL: ${GOOGLE_SMALL_MODEL}
-      GOOGLE_LARGE_MODEL: ${GOOGLE_LARGE_MODEL}
-      GOOGLE_IMAGE_MODEL: ${GOOGLE_IMAGE_MODEL}
-      GOOGLE_EMBEDDING_MODEL: ${GOOGLE_EMBEDDING_MODEL}
-      
       # ElizaOS configuration
       SECRET_SALT: ${SECRET_SALT}
     ports:
@@ -134,8 +130,6 @@ services:
       # Google GenAI configuration
       GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
       GOOGLE_SMALL_MODEL: ${GOOGLE_SMALL_MODEL}
-      GOOGLE_LARGE_MODEL: ${GOOGLE_LARGE_MODEL}
-      GOOGLE_IMAGE_MODEL: ${GOOGLE_IMAGE_MODEL}
       GOOGLE_EMBEDDING_MODEL: ${GOOGLE_EMBEDDING_MODEL}
       
       # ElizaOS configuration
@@ -170,6 +164,9 @@ services:
     env_file:
       - .env
     environment:
+      # Port configuration
+      PORT: 5002
+      
       # Database configuration
       DATABASE_URL: ${DATABASE_URL}
       POSTGRES_URL: ${POSTGRES_URL}

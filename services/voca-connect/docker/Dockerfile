@@ -28,7 +28,7 @@ COPY services/voca-connect/ ./
 
 # Set environment variables
 ENV PYTHONPATH=/app
-ENV PORT=8001
+ENV PORT=5002
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash voca
@@ -36,11 +36,11 @@ RUN chown -R voca:voca /app
 USER voca
 
 # Expose port
-EXPOSE 8001
+EXPOSE 5002
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
+    CMD curl -f http://localhost:5002/health || exit 1
 
 # Start Voca Connect service
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5002"]
