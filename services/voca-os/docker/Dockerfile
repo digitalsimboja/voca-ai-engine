@@ -16,17 +16,17 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy manifest files first (cache layer)
-COPY services/voca-os/package.json ./package.json
-COPY services/voca-os/tsconfig.json ./tsconfig.json
+COPY package.json ./package.json
+COPY tsconfig.json ./tsconfig.json
 
 # Install all deps, including optional + postinstall scripts
 RUN bun install
 
 # Copy source after installing deps
-COPY services/voca-os/voca-os-service.ts ./voca-os-service.ts
-COPY services/voca-os/src ./src
-COPY services/voca-os/plugins ./plugins
-COPY services/voca-os/characters ./characters
+COPY voca-os-service.ts ./voca-os-service.ts
+COPY src ./src
+COPY plugins ./plugins
+COPY characters ./characters
 
 # Build TypeScript
 RUN bun run build

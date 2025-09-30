@@ -10,7 +10,7 @@ import {
 } from "@elizaos/core";
 import bootstrapPlugin from "@elizaos/plugin-bootstrap";
 import sqlPlugin from "@elizaos/plugin-sql";
-import googlePlugin from "@elizaos/plugin-google-genai";
+import openaiPlugin from "@elizaos/plugin-openai";
 import orderPlugin from "../../plugins/plugin-order.js";
 import { createDynamicCharacter } from "../utils/character-utils.js";
 import { cache } from "../services/cache.js";
@@ -83,23 +83,20 @@ export class EmbeddedElizaOSManager {
 
       const runtime = new AgentRuntime({
         character: runtimeCharacter,
-        plugins: [sqlPlugin, bootstrapPlugin, googlePlugin, orderPlugin],
+        plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin, orderPlugin],
         settings: {
           POSTGRES_URL: process.env["POSTGRES_URL"],
           OPENAI_API_KEY: process.env["OPENAI_API_KEY"],
-          GOOGLE_GENERATIVE_AI_API_KEY:
-            process.env["GOOGLE_GENERATIVE_AI_API_KEY"],
+          // GOOGLE_GENERATIVE_AI_API_KEY:
+          //   process.env["GOOGLE_GENERATIVE_AI_API_KEY"],
         },
       });
-
-      console.log("Database adapter:", runtime.adapter);
-
       // Create database adapter and run migrations before runtime initialization
       const adapter = await createDatabaseAdapter(runtime.agentId);
       await runMigrations(adapter, runtime.agentId, [
         sqlPlugin,
         bootstrapPlugin,
-        googlePlugin,
+        openaiPlugin,
         orderPlugin,
       ]);
 

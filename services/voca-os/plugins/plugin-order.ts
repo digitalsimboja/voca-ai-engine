@@ -292,8 +292,8 @@ const checkOrderStatusHandler: Handler = async (
       .catch(() => ({} as State));
 
     // ------------------------
-    // Call the registered model (e.g. google-genai) via runtime.useModel
-    // Model name "generateText" must match how the genai plugin registers its model
+    // Call the registered model (e.g. openai) via runtime.useModel
+    // Model name "generateText" must match how the model plugin registers its model
     // ------------------------
     let finalText = rawResponse;
     try {
@@ -344,7 +344,7 @@ const checkOrderStatusHandler: Handler = async (
         await callback(content);
       } catch (cbErr) {
         // ignore callback send errors here; still return action result
-        runtime.logger?.error?.("Order plugin: callback failed", cbErr);
+        runtime.logger?.error?.("Order plugin: callback failed", cbErr as string);
       }
     }
 
@@ -618,7 +618,7 @@ const orderEvents = {
           } catch (gErr) {
             runtime.logger?.warn?.(
               "Order plugin: model rewrite failed, returning raw response",
-              gErr
+              gErr as string
             );
             finalText = orderInfo.response;
           }
@@ -638,7 +638,7 @@ const orderEvents = {
             try {
               await callback(response);
             } catch (cbErr) {
-              runtime.logger?.error?.("Order plugin: callback failed", cbErr);
+              runtime.logger?.error?.("Order plugin: callback failed", cbErr as string);
             }
           }
         } catch (error: any) {
@@ -789,7 +789,7 @@ export const orderPlugin: Plugin = {
     ],
   },
   schema:{
-    tables: [orders],
+    orders: [orders],
   }
 };
 
