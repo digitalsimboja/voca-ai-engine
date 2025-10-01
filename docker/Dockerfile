@@ -23,7 +23,6 @@ RUN cd shared-utils && pip install -e .
 
 # Copy application code
 COPY app/ ./app/
-COPY config/ ./config/
 COPY api/ ./api/
 
 # Set environment variables

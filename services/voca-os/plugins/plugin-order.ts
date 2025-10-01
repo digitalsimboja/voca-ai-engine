@@ -34,6 +34,7 @@ function isOrderQuery(message: string): boolean {
     "shipping status",
     "order #",
     "order id",
+    "order number",
     "my order",
     "check order",
     "order update",
@@ -74,46 +75,12 @@ function extractOrderId(message: string): string | null {
 async function fetchOrderFromDatabase(orderId: string): Promise<any> {
   console.log(` Fetching order data for order ID: ${orderId}`);
 
-  const mockOrders: Record<string, any> = {
-    "123": {
-      id: "123",
-      order_number: "ORD-001",
-      status: "shipped",
-      customer_name: "John Doe",
-      customer_email: "john@example.com",
-      items: ["Product A", "Product B"],
-      created_at: "2024-01-15",
-      shipped_at: "2024-01-16",
-      tracking_number: "TRK123456789",
-      total_amount: 99.99,
-    },
-    "456": {
-      id: "456",
-      order_number: "ORD-002",
-      status: "processing",
-      customer_name: "Jane Smith",
-      customer_email: "jane@example.com",
-      items: ["Product C"],
-      created_at: "2024-01-18",
-      total_amount: 49.99,
-    },
-    "789": {
-      id: "789",
-      order_number: "ORD-003",
-      status: "delivered",
-      customer_name: "Bob Johnson",
-      customer_email: "bob@example.com",
-      items: ["Product D", "Product E"],
-      created_at: "2024-01-10",
-      shipped_at: "2024-01-12",
-      delivered_at: "2024-01-15",
-      tracking_number: "TRK987654321",
-      total_amount: 149.99,
-    },
-  };
+  // bring in the engine client
+  // initlialize it with the API_key and the vendor_id
+  // Call the fetchorders from the table using the credentials
+  // return the orders
 
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  return mockOrders[orderId] || null;
+  return null;
 }
 
 /**
@@ -665,30 +632,6 @@ const orderEvents = {
   ],
 };
 
-export const orders = pgTable("orders", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  orderNumber: varchar("order_number", { length: 50 }).notNull().unique(),
-  customerName: varchar("customer_name", { length: 255 }),
-  customerEmail: varchar("customer_email", { length: 255 }),
-  customerPhone: varchar("customer_phone", { length: 20 }),
-  deliveryAddress: text("delivery_address"),
-  items: jsonb("items"),
-  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }),
-  status: varchar("status", { length: 50 }),
-  agentId: uuid("agent_id"),
-  catalogId: uuid("catalog_id"),
-  storeId: uuid("store_id"),
-  ownerId: bigint("owner_id", { mode: "number" }),
-  notes: text("notes"),
-  trackingNumber: varchar("tracking_number", { length: 100 }),
-  shippedAt: timestamp("shipped_at", { withTimezone: false }),
-  deliveredAt: timestamp("delivered_at", { withTimezone: false }),
-  cancelledAt: timestamp("cancelled_at", { withTimezone: false }),
-  cancelledReason: text("cancelled_reason"),
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
 
 // ============================================================================
 // PLUGIN
@@ -787,9 +730,6 @@ export const orderPlugin: Plugin = {
       "order update",
       "delivery update",
     ],
-  },
-  schema:{
-    orders: [orders],
   }
 };
 

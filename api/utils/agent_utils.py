@@ -166,9 +166,7 @@ async def provision_vocaos_agent(
     Returns:
         Dict containing provisioning results
     """
-    try:
-        logger.info("Provisioning VocaOS agent", vendor_id=vendor_identifier)
-        
+    try:        
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{voca_os_url}/voca-os/api/v1/vendors/register",
@@ -219,32 +217,6 @@ async def provision_vocaos_agent(
         
         logger.error("Error provisioning VocaOS agent", error_message=str(e))
         return result
-
-
-def validate_vendor_id(request_data: Dict[str, Any]) -> str:
-    """
-    Validate and extract vendor ID from request data.
-    
-    Args:
-        request_data: The request data containing vendor information
-        
-    Returns:
-        The validated vendor identifier
-        
-    Raises:
-        ValueError: If vendor_id is missing or invalid
-    """
-    vendor_identifier = request_data.get('vendor_id')
-    
-    if not vendor_identifier:
-        # Generate a temporary vendor ID if not provided (fallback)
-        vendor_identifier = f"vendor-{request_data.get('name', 'agent').lower().replace(' ', '-')}"
-        logger.warning("No vendor_id provided, using generated identifier", 
-                     generated_vendor_id=vendor_identifier)
-    else:
-        logger.info("Using provided vendor_id", vendor_id=vendor_identifier)
-    
-    return vendor_identifier
 
 
 def check_channel_requirements(channels: List[str]) -> Dict[str, bool]:

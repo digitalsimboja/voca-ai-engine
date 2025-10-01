@@ -6,71 +6,212 @@ import {
   VendorRegistrationResponse,
 } from '../types/index.js';
 
-/**
- * PoolManager class manages multiple agent pools
- * Handles pool creation, vendor distribution, and load balancing
- */
+export interface PoolMetrics {
+  poolId: string;
+  isInitialized: boolean;
+  vendorCount: number;
+  maxVendors: number;
+  elizaosManager: unknown;
+  messageCount: number;
+  responseTime: number;   // average response time per pool
+  errorCount: number;
+  characterSwitches: number;
+}
+
+export interface SystemMetrics {
+  totalPools: number;
+  totalVendors: number;
+  totalMessages: number;
+  totalErrors: number;
+  averageResponseTime: number; // average across pools
+  pools: PoolMetrics[];
+}
 export class PoolManager {
-  private pools: Map<string, AgentPool> = new Map();
-  private maxPools: number;
-  private maxVendorsPerPool: number;
+  private readonly pools: Map<string, AgentPool> = new Map();
+  private readonly maxPools: number;
+  private readonly maxVendorsPerPool: number;
   private isInitialized: boolean = false;
-  private poolCreationLock: Map<string, Promise<AgentPool>> = new Map();
+
+  private readonly poolCreationLock: Map<string, Promise<AgentPool>> = new Map();
+  private readonly vendorRegistrationLock: Map<string, Promise<VendorRegistrationResponse>> = new Map();
 
   constructor(maxPools: number = 10, maxVendorsPerPool: number = 5000) {
     this.maxPools = maxPools;
     this.maxVendorsPerPool = maxVendorsPerPool;
   }
 
-  /**
-   * Register a vendor with improved pool creation logic
-   */
   async registerVendor(vendorId: string, agentConfig: AgentConfig): Promise<VendorRegistrationResponse> {
-    // Check if vendor is already registered
-    if (cache.hasVendor(vendorId)) {
-      const existingPoolId = cache.getVendorPool(vendorId);
-      if (existingPoolId) {
-        const pool = this.getPool(existingPoolId);
-        if (pool) {
-          console.log(`Vendor ${vendorId} already registered in pool ${existingPoolId}`);
-          return {
-            poolId: existingPoolId,
-            vendorId,
-            agent_id: cache.getVendorDetails(vendorId)?.agentId || '',
-            status: 'already_registered',
-            config: agentConfig,
-            character_path: '',
-            registered_at: cache.getVendorDetails(vendorId)?.registeredAt || new Date().toISOString()
-          };
-        }
-      }
+    if (this.vendorRegistrationLock.has(vendorId)) {
+      return this.vendorRegistrationLock.get(vendorId)!;
     }
 
-    // Try to find an available pool
-    const availablePool = await this.findAvailablePool();
-    
-    if (availablePool) {
-      try {
-        const result = await availablePool.registerVendor(vendorId, agentConfig);
-        cache.setVendorPool(vendorId, availablePool.getPoolId());
-        console.log(`Vendor ${vendorId} registered in existing pool ${availablePool.getPoolId()}`);
-        return result;
-      } catch (error: any) {
-        if (error.message.includes('maximum capacity')) {
-          console.log(`Pool ${availablePool.getPoolId()} became full during registration, will create new pool`);
-        } else {
-          throw error;
+    const task = (async (): Promise<VendorRegistrationResponse> => {
+      const mappedPoolId = cache.getVendorPool(vendorId);
+      if (mappedPoolId) {
+        const mappedPool = this.getPool(mappedPoolId);
+        if (mappedPool) {
+          try {
+            const res = await mappedPool.registerVendor(vendorId, agentConfig);
+            this.bindVendorToPool(vendorId, mappedPool.getPoolId());
+            return res;
+          } catch {
+            return this.buildAlreadyRegisteredResponse(vendorId, mappedPool.getPoolId(), agentConfig);
+          }
+        }
+        cache.removeVendorPool(vendorId);
+      }
+
+      const available = await this.findAvailablePool();
+      if (available) {
+        try {
+          const result = await available.registerVendor(vendorId, agentConfig);
+          this.bindVendorToPool(vendorId, available.getPoolId());
+          return result;
+        } catch (error) {
+          const message = (error as Error)?.message ?? '';
+          if (!message.includes('maximum capacity')) {
+            throw error;
+          }
         }
       }
-    }
 
-    // No available pool found, create a new one
-    return await this.createNewPoolAndRegister(vendorId, agentConfig);
+      const newPool = await this.getOrCreateNewPool();
+      const result = await newPool.registerVendor(vendorId, agentConfig);
+      this.bindVendorToPool(vendorId, newPool.getPoolId());
+      return result;
+    })();
+
+    this.vendorRegistrationLock.set(vendorId, task);
+    try {
+      return await task;
+    } finally {
+      this.vendorRegistrationLock.delete(vendorId);
+    }
   }
 
   /**
-   * Find an available pool with space
+   * Process a message for a vendor
    */
+  async processMessage(vendorId: string, message: string, platform: string, userId: string): Promise<MessageResponse> {
+    const poolId = cache.getVendorPool(vendorId);
+    if (!poolId) {
+      throw new Error(`Vendor ${vendorId} not found in any pool`);
+    }
+
+    const pool = this.getPool(poolId);
+    if (!pool) {
+      throw new Error(`Pool ${poolId} not found`);
+    }
+
+    return pool.processMessage(vendorId, message, platform, userId);
+  }
+
+  async removeVendor(vendorId: string): Promise<{ success: boolean; message: string }> {
+    const poolId = cache.getVendorPool(vendorId);
+    if (!poolId) {
+      return { success: false, message: `Vendor ${vendorId} not found in any pool` };
+    }
+
+    const pool = this.getPool(poolId);
+    if (!pool) {
+      cache.removeVendorPool(vendorId);
+      await this.cleanupEmptyPools();
+      return { success: false, message: `Pool ${poolId} not found; mapping cleared` };
+    }
+
+    const result = await pool.removeVendor(vendorId);
+    cache.removeVendorPool(vendorId);
+    await this.cleanupEmptyPools();
+    return result;
+  }
+
+
+  async createPool(poolId: string, maxVendors?: number): Promise<AgentPool> {
+    if (!this.canCreateMorePools()) {
+      throw new Error(`Maximum number of pools (${this.maxPools}) reached`);
+    }
+    if (this.pools.has(poolId)) {
+      throw new Error(`Pool ${poolId} already exists`);
+    }
+
+    const pool = new AgentPool(poolId, maxVendors ?? this.maxVendorsPerPool);
+    await pool.initialize();
+
+    this.pools.set(poolId, pool);
+    console.log(`Created new pool: ${poolId}`);
+    return pool;
+  }
+
+  getPool(poolId: string): AgentPool | null {
+    return this.pools.get(poolId) ?? null;
+    }
+
+  async initialize(): Promise<boolean> {
+    try {
+      console.log('Initializing Pool Manager (refactored)...');
+
+      if (!this.pools.has('pool-1')) {
+        await this.createPool('pool-1');
+      }
+
+      this.isInitialized = true;
+      return true;
+    } catch (error) {
+      console.error('Error initializing Pool Manager:', error);
+      return false;
+    }
+  }
+
+  async shutdown(): Promise<void> {
+    console.log('Shutting down all pools...');
+    for (const [, pool] of this.pools) {
+      try {
+        await pool.shutdown();
+      } catch (error) {
+        console.error(`Error shutting down pool ${pool.getPoolId?.() ?? 'unknown'}:`, error);
+      }
+    }
+    this.pools.clear();
+    this.isInitialized = false;
+    console.log('All pools shut down');
+  }
+
+ 
+  getAllPools(): PoolMetrics[] {
+    const out: PoolMetrics[] = [];
+    for (const [, pool] of this.pools) {
+      out.push(pool.getMetrics());
+    }
+    return out;
+  }
+
+ 
+  getSystemMetrics(): SystemMetrics {
+    const pools = this.getAllPools();
+    return this.calculateSystemMetrics(pools);
+  }
+  
+  getStatus(): {
+    isInitialized: boolean;
+    maxPools: number;
+    maxVendorsPerPool: number;
+    activePools: number;
+    systemMetrics: SystemMetrics;
+  } {
+    return {
+      isInitialized: this.isInitialized,
+      maxPools: this.maxPools,
+      maxVendorsPerPool: this.maxVendorsPerPool,
+      activePools: this.pools.size,
+      systemMetrics: this.getSystemMetrics(),
+    };
+  }
+
+
+  private bindVendorToPool(vendorId: string, poolId: string): void {
+    cache.setVendorPool(vendorId, poolId);
+  }
+
   private async findAvailablePool(): Promise<AgentPool | null> {
     for (const [poolId, pool] of this.pools) {
       const vendorCount = cache.getVendorCountForPool(poolId);
@@ -81,291 +222,98 @@ export class PoolManager {
     return null;
   }
 
-  /**
-   * Create a new pool and register the vendor
-   */
-  private async createNewPoolAndRegister(vendorId: string, agentConfig: AgentConfig): Promise<VendorRegistrationResponse> {
-    // Check if we can create more pools
-    if (this.pools.size >= this.maxPools) {
-      throw new Error(`Maximum number of pools (${this.maxPools}) reached. Cannot register vendor ${vendorId}`);
-    }
-
-    const newPoolId = `pool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Use a lock to prevent multiple pools being created simultaneously
-    const lockKey = 'pool-creation';
-    if (this.poolCreationLock.has(lockKey)) {
-      // Wait for the existing pool creation to complete
-      await this.poolCreationLock.get(lockKey);
-      // Try to find an available pool again
-      const availablePool = await this.findAvailablePool();
-      if (availablePool) {
-        const result = await availablePool.registerVendor(vendorId, agentConfig);
-        cache.setVendorPool(vendorId, availablePool.getPoolId());
-        return result;
-      }
-    }
-
-    // Create new pool with lock
-    const poolCreationPromise = this.createPool(newPoolId);
-    this.poolCreationLock.set(lockKey, poolCreationPromise);
-
-    try {
-      const newPool = await poolCreationPromise;
-      const result = await newPool.registerVendor(vendorId, agentConfig);
-      cache.setVendorPool(vendorId, newPoolId);
-      
-      console.log(`Vendor ${vendorId} registered in newly created pool ${newPoolId}`);
-      return result;
-    } finally {
-      // Clean up the lock
-      this.poolCreationLock.delete(lockKey);
-    }
+  private canCreateMorePools(): boolean {
+    return this.pools.size < this.maxPools;
   }
 
-  /**
-   * Create a new agent pool
-   */
-  async createPool(poolId: string, maxVendors?: number): Promise<AgentPool> {
-    if (this.pools.size >= this.maxPools) {
-      throw new Error(`Maximum number of pools (${this.maxPools}) reached`);
-    }
-
-    if (this.pools.has(poolId)) {
-      throw new Error(`Pool ${poolId} already exists`);
-    }
-
-    const pool = new AgentPool(poolId, maxVendors || this.maxVendorsPerPool);
-    await pool.initialize();
-    
-    this.pools.set(poolId, pool);
-    console.log(`Created new pool: ${poolId}`);
-    
-    return pool;
+  private buildAlreadyRegisteredResponse(
+    vendorId: string,
+    poolId: string,
+    agentConfig: AgentConfig
+  ): VendorRegistrationResponse {
+    const details = cache.getVendorDetails(vendorId);
+    return {
+      poolId,
+      vendorId,
+      agent_id: details?.agentId ?? '',
+      status: 'already_registered',
+      config: agentConfig,
+      character_path: '',
+      registered_at: details?.registeredAt ?? new Date().toISOString(),
+    };
   }
 
-  /**
-   * Get an existing pool by ID
-   */
-  getPool(poolId: string): AgentPool | null {
-    return this.pools.get(poolId) || null;
-  }
-
-  /**
-   * Process a message for a vendor
-   */
-  async processMessage(vendorId: string, message: string, platform: string, userId: string): Promise<MessageResponse> {
-    const poolId = cache.getVendorPool(vendorId);
-    
-    if (!poolId) {
-      throw new Error(`Vendor ${vendorId} not found in any pool`);
-    }
-
-    const pool = this.getPool(poolId);
-    if (!pool) {
-      throw new Error(`Pool ${poolId} not found`);
-    }
-
-    return await pool.processMessage(vendorId, message, platform, userId);
-  }
-
-  /**
-   * Remove a vendor from its pool
-   */
-  async removeVendor(vendorId: string): Promise<{ success: boolean; message: string }> {
-    const poolId = cache.getVendorPool(vendorId);
-    
-    if (!poolId) {
-      return { success: false, message: `Vendor ${vendorId} not found in any pool` };
-    }
-
-    const pool = this.getPool(poolId);
-    if (!pool) {
-      return { success: false, message: `Pool ${poolId} not found` };
-    }
-
-    const result = await pool.removeVendor(vendorId);
-    
-    // Remove vendor from pool mapping
-    cache.removeVendorPool(vendorId);
-    
-    // Check if pool is now empty and can be cleaned up
-    await this.cleanupEmptyPools();
-    
-    return result;
-  }
-
-  /**
-   * Clean up empty pools (except the first one)
-   */
-  private async cleanupEmptyPools(): Promise<void> {
-    const poolsToRemove: string[] = [];
-    
-    for (const [poolId, pool] of this.pools) {
-      // Don't remove the first pool (pool-1)
-      if (poolId === 'pool-1') continue;
-      
-      const vendorCount = cache.getVendorCountForPool(poolId);
-      if (vendorCount === 0) {
-        poolsToRemove.push(poolId);
-      }
-    }
-
-    // Remove empty pools
-    for (const poolId of poolsToRemove) {
-      const pool = this.pools.get(poolId);
-      if (pool) {
-        await pool.shutdown();
-        this.pools.delete(poolId);
-        console.log(`Cleaned up empty pool: ${poolId}`);
-      }
-    }
-  }
-
-  /**
-   * Get all pools with their metrics
-   */
-  getAllPools(): Array<{
-    poolId: string;
-    isInitialized: boolean;
-    vendorCount: number;
-    maxVendors: number;
-    elizaosManager: any;
-    messageCount: number;
-    responseTime: number;
-    errorCount: number;
-    characterSwitches: number;
-  }> {
-    const pools: Array<{
-      poolId: string;
-      isInitialized: boolean;
-      vendorCount: number;
-      maxVendors: number;
-      elizaosManager: any;
-      messageCount: number;
-      responseTime: number;
-      errorCount: number;
-      characterSwitches: number;
-    }> = [];
-
-    for (const [poolId, pool] of this.pools) {
-      pools.push(pool.getMetrics());
-    }
-
-    return pools;
-  }
-
-  /**
-   * Get overall system metrics
-   */
-  getSystemMetrics(): {
-    totalPools: number;
-    totalVendors: number;
-    totalMessages: number;
-    totalErrors: number;
-    averageResponseTime: number;
-    pools: Array<{
-      poolId: string;
-      isInitialized: boolean;
-      vendorCount: number;
-      maxVendors: number;
-      elizaosManager: any;
-      messageCount: number;
-      responseTime: number;
-      errorCount: number;
-      characterSwitches: number;
-    }>;
-  } {
-    const pools = this.getAllPools();
-    
-    const totalVendors = pools.reduce((sum, pool) => sum + pool.vendorCount, 0);
-    const totalMessages = pools.reduce((sum, pool) => sum + pool.messageCount, 0);
-    const totalErrors = pools.reduce((sum, pool) => sum + pool.errorCount, 0);
-    const averageResponseTime = pools.length > 0 
-      ? pools.reduce((sum, pool) => sum + pool.responseTime, 0) / pools.length 
-      : 0;
+  private calculateSystemMetrics(pools: PoolMetrics[]): SystemMetrics {
+    const totalPools = pools.length;
+    const totalVendors = pools.reduce((sum, p) => sum + p.vendorCount, 0);
+    const totalMessages = pools.reduce((sum, p) => sum + p.messageCount, 0);
+    const totalErrors = pools.reduce((sum, p) => sum + p.errorCount, 0);
+    const averageResponseTime =
+      totalPools > 0
+        ? pools.reduce((sum, p) => sum + p.responseTime, 0) / totalPools
+        : 0;
 
     return {
-      totalPools: pools.length,
+      totalPools,
       totalVendors,
       totalMessages,
       totalErrors,
       averageResponseTime,
-      pools
+      pools,
     };
   }
 
-  /**
-   * Initialize the pool manager
-   */
-  async initialize(): Promise<boolean> {
+
+  private async getOrCreateNewPool(): Promise<AgentPool> {
+    if (!this.canCreateMorePools()) {
+      throw new Error(`Maximum number of pools (${this.maxPools}) reached. Cannot create new pool.`);
+    }
+
+    const lockKey = 'pool-creation';
+    if (this.poolCreationLock.has(lockKey)) {
+      // Wait for in-flight creation, then try to reuse any available pool
+      await this.poolCreationLock.get(lockKey)!;
+      const available = await this.findAvailablePool();
+      if (available) return available;
+      // If still none and capacity remains, fall through to create another
+    }
+
+    const newPoolId = this.generatePoolId();
+    const creation = this.createPool(newPoolId);
+    this.poolCreationLock.set(lockKey, creation);
+
     try {
-      console.log('Initializing Improved Pool Manager...');
-      
-      // Create default pool-1
-      await this.createPool('pool-1');
-      
-      this.isInitialized = true;
-      return true;
-    } catch (error: any) {
-      console.error('Error initializing Improved Pool Manager:', error);
-      return false;
+      const created = await creation;
+      return created;
+    } finally {
+      this.poolCreationLock.delete(lockKey);
     }
   }
 
-  /**
-   * Shutdown all pools
-   */
-  async shutdown(): Promise<void> {
-    console.log('Shutting down all pools...');
-    
+  /** Remove empty pools except the canonical 'pool-1' */
+  private async cleanupEmptyPools(): Promise<void> {
+    const toRemove: string[] = [];
+
     for (const [poolId, pool] of this.pools) {
-      try {
-        await pool.shutdown();
-        console.log(`Pool ${poolId} shut down successfully`);
-      } catch (error: any) {
-        console.error(`Error shutting down pool ${poolId}:`, error);
+      if (poolId === 'pool-1') continue; // keep default pool
+      const vendorCount = cache.getVendorCountForPool(poolId);
+      if (vendorCount === 0) {
+        toRemove.push(poolId);
       }
     }
-    
-    this.pools.clear();
-    this.isInitialized = false;
-    console.log('All pools shut down');
+
+    for (const poolId of toRemove) {
+      const pool = this.pools.get(poolId);
+      if (!pool) continue;
+      await pool.shutdown();
+      this.pools.delete(poolId);
+      console.log(`Cleaned up empty pool: ${poolId}`);
+    }
   }
 
-  /**
-   * Get pool manager status
-   */
-  getStatus(): {
-    isInitialized: boolean;
-    maxPools: number;
-    maxVendorsPerPool: number;
-    activePools: number;
-    systemMetrics: {
-      totalPools: number;
-      totalVendors: number;
-      totalMessages: number;
-      totalErrors: number;
-      averageResponseTime: number;
-      pools: Array<{
-        poolId: string;
-        isInitialized: boolean;
-        vendorCount: number;
-        maxVendors: number;
-        elizaosManager: any;
-        messageCount: number;
-        responseTime: number;
-        errorCount: number;
-        characterSwitches: number;
-      }>;
-    };
-  } {
-    return {
-      isInitialized: this.isInitialized,
-      maxPools: this.maxPools,
-      maxVendorsPerPool: this.maxVendorsPerPool,
-      activePools: this.pools.size,
-      systemMetrics: this.getSystemMetrics()
-    };
+  /** Pool ID generator */
+  private generatePoolId(): string {
+    // e.g., pool-1632902400-abc123xyz
+    return `pool-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 }

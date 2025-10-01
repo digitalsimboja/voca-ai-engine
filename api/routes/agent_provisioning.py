@@ -16,25 +16,20 @@ from ..utils.agent_utils import (
         build_agent_configuration,
         configure_social_media_platforms,
         provision_vocaos_agent,
-        validate_vendor_id,
         check_channel_requirements,
         create_provisioning_result
-    )
-    
-    
+    )  
 from voca_engine_shared_utils.core.config import get_settings
-from voca_engine_shared_utils.core.database import get_database
 from voca_engine_shared_utils.core.logger import get_logger
 
 logger = get_logger("voca-ai-engine.agent_provisioning")
 router = APIRouter()
 settings = get_settings()
 
-
 class AgentProvisioningRequest(BaseModel):
     """Agent provisioning request model"""
     name: str = Field(..., description="Name of the agent")
-    vendor_id: Optional[str] = Field(None, description="Vendor ID from the backend")
+    vendor_id: Optional[str] = Field(None, description="Vendor ID")
     description: str = Field(..., description="Description of the agent")
     business_type: str = Field(..., description="Type of business (retail, microfinance, etc.)")
     channels: list[str] = Field(..., description="Communication channels (voice, whatsapp, etc.)")
@@ -91,12 +86,6 @@ async def provision_agent(
 ) -> AgentProvisioningResponse:
     """
     Provision a new agent.
-    
-    This endpoint directly provisions the agent by:
-    1. Creating agent record in database
-    2. Provisioning AWS Connect resources (if voice/SMS channels requested)
-    3. Creating ElizaOS agent configuration
-    4. Setting up webhooks and integrations
     """
     try:
         logger.info("Starting agent provisioning", agent_name=request.name)
@@ -341,8 +330,7 @@ async def _provision_agent(
     settings = get_settings()
     
     try:
-        # Validate vendor ID
-        vendor_identifier = validate_vendor_id(request_data)
+        vendor_identifier = request_data.get('vendor_id')
         
         # Extract request details
         channels = request_data.get('channels', [])
@@ -358,7 +346,7 @@ async def _provision_agent(
         # Provision VocaOS agent for social media channels
         if has_social_media:
             try:
-                logger.info("Provisioning VocaOS agent for social media channels", channels=channels)
+                logger.info("Provisioning VocaOS agent for social platforms", channels=channels)
                 
                 # Build complete agent configuration
                 agent_config = build_agent_configuration(request_data)

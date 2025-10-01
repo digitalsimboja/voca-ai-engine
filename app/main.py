@@ -2,7 +2,7 @@
 Voca AI Engine - Main FastAPI Application
 
 This is the core orchestration service that handles agent provisioning requests
-and coordinates with Voca OS (ElizaOS agents) and Voca Connect (AWS Connect).
+and coordinates with Voca OS (ElizaOS agents) and Voca Connect.
 """
 
 import os
@@ -17,13 +17,11 @@ import uvicorn
 from voca_engine_shared_utils.core.config import get_settings
 from voca_engine_shared_utils.core.logger import get_logger
 # Import only the routes we've created
-from api.routes import health, agent_provisioning, service_status, message_routing, webhooks
+from api.routes import health, agent_provisioning, service_status, message_routing, webhooks, service_router
 
 URL_PREFIX = "/voca-engine/api/v1"
-
 # Setup logging
 logger = get_logger("voca-ai-engine")
-
 # Get settings
 settings = get_settings()
 
@@ -50,6 +48,7 @@ app.include_router(health.router, prefix=f"{URL_PREFIX}/health", tags=["Health"]
 app.include_router(agent_provisioning.router, prefix=f"{URL_PREFIX}/agent", tags=["Agent Provisioning"])
 app.include_router(service_status.router, prefix=f"{URL_PREFIX}/status", tags=["Service Status"])
 app.include_router(message_routing.router, prefix=f"{URL_PREFIX}/messages", tags=["Message Routing"])
+app.include_router(service_router.router, prefix=f"{URL_PREFIX}", tags=["Service Router"])
 app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 
 @app.on_event("startup")
@@ -77,6 +76,7 @@ async def root():
             "agent_provisioning": f"{URL_PREFIX}/agent",
             "service_status": f"{URL_PREFIX}/status",
             "message_routing": f"{URL_PREFIX}/messages",
+            "service_router": f"{URL_PREFIX}/service",
             "webhooks": "/webhooks"
         }
     }

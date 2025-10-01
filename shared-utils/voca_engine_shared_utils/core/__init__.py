@@ -2,6 +2,6 @@
 
 from .config import get_settings, Settings
 from .database import get_database, Database
-from .logger import setup_logging
+from .logger import setup_logging, get_logger, VocaLogger
 
-__all__ = ["get_settings", "Settings", "get_database", "Database", "setup_logging"]
+__all__ = ["get_settings", "Settings", "get_database", "Database", "setup_logging", "get_logger", "VocaLogger"]
