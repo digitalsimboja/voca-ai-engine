@@ -14,7 +14,9 @@ from .core.database import get_database, Database
 from .core.logger import setup_logging, get_logger, VocaLogger
 
 # Utility modules
-from .utils.serializer import serialize_datetime, deserialize_datetime
+from .helpers.serializer import serialize_datetime, deserialize_datetime
+
+from .clients.voca_service_client import voca_service_client
 
 # Database models - TODO: Add when db models are created
 # from .db.models import BaseModel
@@ -33,6 +35,6 @@ __all__ = [
     "serialize_datetime",
     "deserialize_datetime",
     
-    # Models - TODO: Add when db models are created
-    # "BaseModel",
+    # Clients
+    "voca_service_client",
 ]

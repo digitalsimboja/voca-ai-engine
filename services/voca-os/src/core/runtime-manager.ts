@@ -170,7 +170,8 @@ export class EmbeddedElizaOSManager {
     userMessage: string,
     platform: string,
     entityUserId: string,
-    roomId: string
+    roomId: string,
+    vendorId: string
   ): MessageMemory {
     const messageMemory = createMessageMemory({
       id: uuidv4() as UUID,
@@ -178,6 +179,7 @@ export class EmbeddedElizaOSManager {
       roomId: roomId as UUID,
       content: {
         text: userMessage,
+        vendor_id: vendorId,
         source: platform,
         channelType: ChannelType.DM,
       },
@@ -240,7 +242,8 @@ export class EmbeddedElizaOSManager {
         userMessage,
         platform,
         entityUserId,
-        roomId
+        roomId,
+        vendorId
       );
 
       let responseText = "";

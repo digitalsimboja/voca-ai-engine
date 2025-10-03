@@ -37,7 +37,7 @@ class AgentProvisioningRequest(BaseModel):
     configuration: Dict[str, Any] = Field(..., description="Agent configuration data")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "agent_id": None,
                 "name": "MyStore Assistant",

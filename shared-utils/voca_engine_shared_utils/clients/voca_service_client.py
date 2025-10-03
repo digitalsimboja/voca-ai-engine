@@ -15,6 +15,7 @@ class VocaServiceClient:
     
     def __init__(self):
         self.settings = get_settings()
+        self.user_service_url = self.settings.vocaai_user_url
         self.order_service_url = self.settings.vocaai_order_url
         self.conversation_service_url = self.settings.vocaai_conversation_url
         
@@ -55,7 +56,6 @@ class VocaServiceClient:
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             raise
-    
     # Order Service Methods
     async def get_order_by_id(self, order_id: str) -> Optional[Dict[str, Any]]:
         """Get order by ID"""

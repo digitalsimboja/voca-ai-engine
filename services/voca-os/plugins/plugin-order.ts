@@ -13,8 +13,6 @@ import {
   Content,
   ModelType,
 } from "@elizaos/core";
-import { pgTable, uuid, varchar, text, jsonb, decimal, timestamp, bigint } from "drizzle-orm/pg-core";
-
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -68,19 +66,61 @@ function extractOrderId(message: string): string | null {
   return null;
 }
 
+
+function extractVendorId(message: string): string | null {
+  const patterns = [
+    /vendor\s*#?\s*(\d+)/i,
+    /vendor\s+number\s+(\d+)/i,
+    /vendor\s+id\s+(\d+)/i,
+    /vendor-(\d+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match) {
+      const vendorNumber = match[1] as string;
+      // Ensure it's a valid 11-digit number
+      if (vendorNumber.length <= 11 && /^\d+$/.test(vendorNumber)) {
+        return vendorNumber;
+      }
+    }
+  }
+
+  return null;
+}
+
+
 /**
  * Fetch order data from database
  * TODO: Replace with actual database connection
  */
-async function fetchOrderFromDatabase(orderId: string): Promise<any> {
-  console.log(` Fetching order data for order ID: ${orderId}`);
+async function fetchOrderFromDatabase(orderId: string, vendorId: string | null): Promise<any> {
+  console.log(`Fetching order data for order ID: ${orderId}`);
 
-  // bring in the engine client
-  // initlialize it with the API_key and the vendor_id
-  // Call the fetchorders from the table using the credentials
-  // return the orders
+  try {
+    if (!vendorId) {
+      console.error('Vendor ID is required but not provided');
+      return null;
+    }
 
-  return null;
+    const { createVocaEngineClient } = await import('../src/clients/voca-client');
+        
+    const client = createVocaEngineClient(vendorId);
+    
+    const order = await client.getOrderById(orderId);
+    
+    if (order) {
+      console.log(`Successfully fetched order: ${order.order_number || orderId} for vendor: ${vendorId}`);
+      return order;
+    } else {
+      console.log(`Order not found: ${orderId} for vendor: ${vendorId}`);
+      return null;
+    }
+    
+  } catch (error) {
+    console.error(`Error fetching order ${orderId}:`, error);
+    return null;
+  }
 }
 
 /**
@@ -162,6 +202,7 @@ async function processOrderQuery(
   status: string | null;
 } | null> {
   const orderId = extractOrderId(userMessage);
+  const vendorId = extractVendorId(userMessage);
 
   if (!orderId) {
     return {
@@ -172,7 +213,7 @@ async function processOrderQuery(
     };
   }
 
-  const orderData = await fetchOrderFromDatabase(orderId);
+  const orderData = await fetchOrderFromDatabase(orderId, vendorId as string);
   if (!orderData) {
     return {
       response: `After checking the database, I found no order with number ${orderId}.`,
@@ -228,6 +269,7 @@ const checkOrderStatusHandler: Handler = async (
   try {
     const messageText = (message?.content?.text as string) || "";
     const orderId = extractOrderId(messageText);
+    const vendorId = extractVendorId(messageText);
 
     if (!orderId) {
       return {
@@ -237,8 +279,15 @@ const checkOrderStatusHandler: Handler = async (
       };
     }
 
-    // NOTE: replace with real DB query in production
-    const orderData = await fetchOrderFromDatabase(orderId);
+    if (!vendorId) {
+      return {
+        success: false,
+        text: "Please provide your vendor ID so I can look up your order.",
+        error: "No vendor ID found in message",
+      };
+    }
+
+    const orderData = await fetchOrderFromDatabase(orderId, vendorId);
     if (!orderData) {
       return {
         success: false,
@@ -250,10 +299,6 @@ const checkOrderStatusHandler: Handler = async (
     // Raw human-readable text from DB
     const rawResponse = formatOrderResponse(orderData);
 
-    // ------------------------
-    // Use runtime.composeState to build context for the model
-    // ------------------------
-    // include conversation & memories to provide context (adjust as needed)
     const fullState: State = await runtime
       .composeState(message, ["conversation", "memories"])
       .catch(() => ({} as State));
@@ -310,7 +355,6 @@ const checkOrderStatusHandler: Handler = async (
       try {
         await callback(content);
       } catch (cbErr) {
-        // ignore callback send errors here; still return action result
         runtime.logger?.error?.("Order plugin: callback failed", cbErr as string);
       }
     }
@@ -329,10 +373,6 @@ const checkOrderStatusHandler: Handler = async (
   }
 };
 
-/**
- * Handler for SEARCH_ORDERS action
- * (keeps behavior simple but returns AI-polished placeholder text)
- */
 const searchOrdersHandler: Handler = async (
   runtime: IAgentRuntime,
   message: Memory,
@@ -345,7 +385,7 @@ const searchOrdersHandler: Handler = async (
     const messageText = (message?.content?.text as string) || "";
     // Placeholder implementation: in real world, you'd query the DB for user's orders
     const placeholder =
-      "I'll search for your recent orders and summarize them. This feature is coming soon.";
+      "I'll search for your recent orders and summarize them.";
 
     // Build state for model
     const fullState: State = await runtime
@@ -640,7 +680,7 @@ const orderEvents = {
 export const orderPlugin: Plugin = {
   name: "order-management-plugin",
   description: "Handles order status queries and order management operations",
-  priority: 50,
+  priority: 150,
 
   init: async (
     config: Record<string, string>,

@@ -48,7 +48,7 @@ app.include_router(health.router, prefix=f"{URL_PREFIX}/health", tags=["Health"]
 app.include_router(agent_provisioning.router, prefix=f"{URL_PREFIX}/agent", tags=["Agent Provisioning"])
 app.include_router(service_status.router, prefix=f"{URL_PREFIX}/status", tags=["Service Status"])
 app.include_router(message_routing.router, prefix=f"{URL_PREFIX}/messages", tags=["Message Routing"])
-app.include_router(service_router.router, prefix=f"{URL_PREFIX}", tags=["Service Router"])
+app.include_router(service_router.router, prefix=f"{URL_PREFIX}/services", tags=["Service Router"])
 app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 
 @app.on_event("startup")
