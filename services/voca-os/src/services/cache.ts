@@ -10,6 +10,7 @@ import {
 /**
  * In-memory cache for Voca OS service
  * Stores agent runtimes, character configurations, and metrics
+ * Will be replaced with redis
  */
 class Cache {
   private agentRuntimes: Map<string, AgentRuntimeInfo> = new Map();

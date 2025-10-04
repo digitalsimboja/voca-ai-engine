@@ -40,6 +40,20 @@ export class PoolManager {
     this.maxVendorsPerPool = maxVendorsPerPool;
   }
 
+  async initialize(): Promise<boolean> {
+    try {
+      if (!this.pools.has('pool-1')) {
+        await this.createPool('pool-1');
+      }
+
+      this.isInitialized = true;
+      return true;
+    } catch (error) {
+      console.error('Error initializing Pool Manager:', error);
+      return false;
+    }
+  }
+
   async registerVendor(vendorId: string, agentConfig: AgentConfig): Promise<VendorRegistrationResponse> {
     if (this.vendorRegistrationLock.has(vendorId)) {
       return this.vendorRegistrationLock.get(vendorId)!;
@@ -145,22 +159,6 @@ export class PoolManager {
   getPool(poolId: string): AgentPool | null {
     return this.pools.get(poolId) ?? null;
     }
-
-  async initialize(): Promise<boolean> {
-    try {
-      console.log('Initializing Pool Manager (refactored)...');
-
-      if (!this.pools.has('pool-1')) {
-        await this.createPool('pool-1');
-      }
-
-      this.isInitialized = true;
-      return true;
-    } catch (error) {
-      console.error('Error initializing Pool Manager:', error);
-      return false;
-    }
-  }
 
   async shutdown(): Promise<void> {
     console.log('Shutting down all pools...');

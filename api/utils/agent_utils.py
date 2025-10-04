@@ -192,8 +192,7 @@ async def provision_vocaos_agent(
                 
                 logger.info("VocaOS agent provisioned successfully", 
                            vocaos_agent_id=agent_id, 
-                           vendor_id=vendor_identifier,
-                           vocaos_response=voca_os_response)
+                           vendor_id=vendor_identifier)
                 
                 return result
             else:

@@ -88,7 +88,7 @@ async def provision_agent(
     Provision a new agent.
     """
     try:
-        logger.info("Starting agent provisioning", agent_name=request.name)
+        logger.info("Request received for provisioning agent:", request=request)
 
         provisioning_results = await _provision_agent(
             request.dict()
