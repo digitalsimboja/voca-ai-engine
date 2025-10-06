@@ -73,7 +73,7 @@ export interface MessageData {
 export class VocaEngineClient {
   private client: AxiosInstance;
 
-  constructor(vendorId: string, vocaEngineUrl?: string) {
+  constructor(vendorId: string, apiKey: string, vocaEngineUrl?: string) {
     if (!vendorId) {
       throw new Error("Vendor ID is required to initialize VocaEngineClient.");
     }
@@ -90,6 +90,7 @@ export class VocaEngineClient {
         "Content-Type": "application/json",
         "User-Agent": "VocaOS/1.0.0",
         "X-Vendor-ID": vendorId,
+        "X-API-Key": apiKey,
       },
     });
 
@@ -237,6 +238,6 @@ export class VocaEngineClient {
 }
 
 /* ---------- Factory Function ---------- */
-export function createVocaEngineClient(vendorId: string): VocaEngineClient {
-  return new VocaEngineClient(vendorId);
+export function createVocaEngineClient(vendorId: string, apiKey: string): VocaEngineClient {
+  return new VocaEngineClient(vendorId, apiKey);
 }
